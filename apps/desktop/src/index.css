@@ -1,0 +1,13 @@
+/* Reset — TuxNotas uses its own design system in infrastructure/ui/styles/index.css */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  min-width: 320px;
+}

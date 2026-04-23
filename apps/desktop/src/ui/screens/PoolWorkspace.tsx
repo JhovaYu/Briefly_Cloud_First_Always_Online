@@ -1,0 +1,634 @@
+import { useState, useEffect, useRef } from 'react';
+import { Editor } from '../../infrastructure/ui/components/Editor';
+import { TaskBoard } from '../../infrastructure/ui/components/TaskBoard';
+import { AppServices } from '../../infrastructure/AppServices';
+import {
+  Zap, Edit3, Copy, FilePlus, FolderOpen, FileText, Download, Trash2,
+  GripVertical, ChevronRight, ChevronDown, MoreHorizontal, ArrowLeft,
+  Plus, FolderPlus, Search, ListChecks, BookOpen, Clipboard, Moon, Sun,
+  QrCode, ChevronLeft, Sidebar, Settings, X
+} from 'lucide-react';
+import type { Note, Notebook, TaskList } from '@tuxnotas/shared';
+import { type UserProfile, getSavedPools } from '../../core/domain/UserProfile';
+import { application_name } from '../../constants';
+import { ContextMenu } from '../components/ContextMenu';
+import { InlineRename } from '../components/InlineRename';
+import { QrModal } from '../components/QrModal';
+import { SettingsModal, useSettings } from '../components/SettingsModal';
+import { exportNoteAs, exportAllPoolAsZip, exportNoteToService } from '../utils/exportHelpers';
+
+export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl }: {
+  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string;
+}) {
+  const [services, setServices] = useState<AppServices | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; noteId?: string; notebookId?: string } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingType, setRenamingType] = useState<'note' | 'notebook'>('note');
+  const [collapsedNotebooks, setCollapsedNotebooks] = useState<Set<string>>(new Set());
+  const [creatingNotebook, setCreatingNotebook] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark'
+  );
+  const [showSettings, setShowSettings] = useState(false);
+  
+  const settings = useSettings();
+  const [sidebarWidth, setSidebarWidth] = useState<number>(260);
+  const isDraggingRef = useRef(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const sidebarCollapseBtnRef = useRef<HTMLButtonElement>(null);
+
+  const handleMouseDownResizer = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = false;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const diff = moveEvent.clientX - startX;
+      if (Math.abs(diff) > 2 && !isDraggingRef.current) {
+        isDraggingRef.current = true;
+        document.body.classList.add('is-resizing-sidebar');
+      }
+      if (isDraggingRef.current && sidebarRef.current) {
+         let newWidth = startWidth + diff;
+         if (newWidth < 180) newWidth = 180;
+         if (newWidth > window.innerWidth * 0.8) newWidth = window.innerWidth * 0.8;
+         // Actualización DIRECTA del DOM para latencia cero ("efecto laser")
+         sidebarRef.current.style.width = `${newWidth}px`;
+         sidebarRef.current.style.minWidth = `${newWidth}px`;
+         if (sidebarCollapseBtnRef.current && settings.sidebarStyle === 'floating') {
+            sidebarCollapseBtnRef.current.style.left = `${newWidth - 14}px`;
+         }
+      }
+    };
+
+    const onMouseUp = (upEvent: MouseEvent) => {
+      document.body.classList.remove('is-resizing-sidebar');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      
+      if (isDraggingRef.current) {
+         // Finalizar arrastre y sincronizar estado de React
+         const diff = upEvent.clientX - startX;
+         let newWidth = startWidth + diff;
+         if (newWidth < 180) newWidth = 180;
+         if (newWidth > window.innerWidth * 0.8) newWidth = window.innerWidth * 0.8;
+         setSidebarWidth(newWidth);
+      }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('fluent-theme', theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
+  // ─── Initialize services + REAL-TIME SYNC ───
+  useEffect(() => {
+    let cancelled = false;
+    let updateHandler: (() => void) | null = null;
+    let currentSvc: AppServices | null = null;
+
+    (async () => {
+      // ★ Use singleton cache — prevents "Yjs Doc already exists!" on StrictMode double-invoke
+      const svc = await AppServices.getOrCreate(poolId, signalingUrl);
+      if (cancelled) { AppServices.release(poolId); return; }
+      currentSvc = svc;
+      setServices(svc);
+
+      // Store the pool name in Y.Doc so joining peers see it
+      if (poolName) {
+        const existingName = svc.getPoolName();
+        if (!existingName) {
+          svc.setPoolMeta(poolName);
+        }
+      }
+
+      // Helper to refresh all data from Y.Doc
+      const refreshAll = () => {
+        if (cancelled) return;
+        const notesMap = svc.doc.getMap<Note>('notes');
+        const nbMap = svc.doc.getMap<Notebook>('notebooks');
+        setNotes(Array.from(notesMap.values()));
+        setNotebooks(Array.from(nbMap.values()));
+
+        // Also sync pool name from Y.Doc → localStorage for joining peers
+        const syncedName = svc.getPoolName();
+        if (syncedName && syncedName !== poolName) {
+          // Update the local pool entry with the real name
+          const pools = getSavedPools();
+          const entry = pools.find(p => p.id === poolId);
+          if (entry && entry.name !== syncedName) {
+            entry.name = syncedName;
+            import('../../core/domain/UserProfile').then(m => m.savePools(pools));
+          }
+        }
+      };
+
+      // Initial load
+      refreshAll();
+      const allNotes = Array.from(svc.doc.getMap<Note>('notes').values());
+      if (allNotes.length > 0) setActiveNoteId(allNotes[0].id);
+
+      // ★ REAL-TIME SYNC: Listen to ALL Y.Doc updates (local + remote via WebRTC)
+      updateHandler = refreshAll;
+      svc.doc.on('update', updateHandler);
+    })();
+
+
+
+    return () => {
+      cancelled = true;
+      if (currentSvc && updateHandler) {
+        currentSvc.doc.off('update', updateHandler);
+      }
+      AppServices.release(poolId);
+    };
+  }, [poolId]);
+
+  // Logic for Tasks
+  const [taskLists, setTaskLists] = useState<TaskList[]>([]);
+  const [activeTaskListId, setActiveTaskListId] = useState<string | null>(null);
+  const [creatingTaskList, setCreatingTaskList] = useState(false);
+
+  useEffect(() => {
+    if (!services) return;
+    const updateTasks = () => {
+      setTaskLists(services.tasks.getTaskLists(poolId));
+    };
+    updateTasks();
+    services.doc.on('update', updateTasks);
+    return () => services.doc.off('update', updateTasks);
+  }, [services, poolId]);
+
+  const handleCreateTaskList = (name: string) => {
+    setCreatingTaskList(false);
+    if (!name.trim() || !services) return;
+    const list = services.tasks.createTaskList(name, poolId);
+    setActiveTaskListId(list.id);
+    setActiveNoteId(null); // Deselect note
+  };
+
+  const handleDeleteTaskList = (id: string) => {
+    if (!services) return;
+    services.tasks.deleteTaskList(id);
+    if (activeTaskListId === id) setActiveTaskListId(null);
+  };
+
+
+  if (!services) {
+    return (
+      <div className="login-screen">
+        <div className="pulse" style={{ color: 'var(--text-tertiary)', fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Zap size={20} /> Conectando al espacio...
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Note/Notebook CRUD ───
+
+  const handleCreateNote = async (targetNbId?: string) => {
+    const nbId = targetNbId || activeNotebookId;
+    const note = nbId
+      ? await services.createNoteInNotebook(nbId)
+      : await services.createNote();
+    setActiveNoteId(note.id);
+  };
+
+  const handleCreateSubPage = async (parentId: string) => {
+    const note = await services.createSubPage(parentId);
+    if (note) setActiveNoteId(note.id);
+  };
+
+  const handleDuplicateNote = async (noteId: string) => {
+    const copy = await services.duplicateNote(noteId);
+    if (copy) setActiveNoteId(copy.id);
+  };
+
+  const handleDeleteNote = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const children = notes.filter(n => n.parentId === id);
+    for (const child of children) await services.persistence.deleteNote(child.id);
+    await services.persistence.deleteNote(id);
+    if (activeNoteId === id) {
+      const remaining = notes.filter(n => n.id !== id && n.parentId !== id);
+      setActiveNoteId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  };
+
+  const handleRenameNote = async (noteId: string, newTitle: string) => {
+    setRenamingId(null);
+    if (!newTitle.trim()) return;
+    const note = await services.persistence.getNote(noteId);
+    if (note) {
+      note.title = newTitle;
+      note.titleLocked = true;
+      note.updatedAt = Date.now();
+      await services.persistence.saveNote(note);
+    }
+  };
+
+  const handleTitleChange = async (title: string) => {
+    if (!activeNoteId) return;
+    const note = notes.find(n => n.id === activeNoteId);
+    if (note?.titleLocked) return;
+    const persisted = await services.persistence.getNote(activeNoteId);
+    if (persisted) {
+      persisted.title = title;
+      persisted.updatedAt = Date.now();
+      await services.persistence.saveNote(persisted);
+    }
+  };
+
+  const handleCreateNotebook = async (name: string) => {
+    setCreatingNotebook(false);
+    if (!name.trim()) return;
+    await services.createNotebook(name);
+  };
+
+  const handleRenameNotebook = async (nbId: string, newName: string) => {
+    setRenamingId(null);
+    if (!newName.trim()) return;
+    const nb = await services.persistence.getNotebook(nbId);
+    if (nb) { nb.name = newName; await services.persistence.saveNotebook(nb); }
+  };
+
+  const handleDeleteNotebook = async (nbId: string) => {
+    await services.persistence.deleteNotebook(nbId);
+    if (activeNotebookId === nbId) setActiveNotebookId(null);
+  };
+
+  const handleMoveToNotebook = async (noteId: string, notebookId: string | undefined) => {
+    const note = await services.persistence.getNote(noteId);
+    if (note) { note.notebookId = notebookId; await services.persistence.saveNote(note); }
+  };
+
+  const toggleCollapse = (id: string) => {
+    setCollapsedNotebooks(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  // ─── Drag & Drop ───
+  const handleDragStart = (e: React.DragEvent, noteId: string) => {
+    setDraggedNoteId(noteId); e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverTarget(targetId);
+  };
+  const handleDropOnNotebook = async (e: React.DragEvent, nbId: string) => {
+    e.preventDefault(); setDragOverTarget(null);
+    if (draggedNoteId) { await handleMoveToNotebook(draggedNoteId, nbId); setDraggedNoteId(null); }
+  };
+  const handleDropOnUncategorized = async (e: React.DragEvent) => {
+    e.preventDefault(); setDragOverTarget(null);
+    if (draggedNoteId) { await handleMoveToNotebook(draggedNoteId, undefined); setDraggedNoteId(null); }
+  };
+
+  const copyPoolId = async () => {
+    let textToCopy = poolId;
+    if (signalingUrl) {
+      try {
+        const url = new URL(signalingUrl);
+        textToCopy = `${poolId}@${url.hostname}`;
+      } catch { }
+    }
+    try { await navigator.clipboard.writeText(textToCopy); } catch { /* fallback */ }
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ─── Derived data ───
+  const activeNote = notes.find(n => n.id === activeNoteId);
+  const filterMatch = (n: Note) => n.title.toLowerCase().includes(searchQuery.toLowerCase());
+  const getTopNotes = (nbId?: string) => notes.filter(n => n.notebookId === nbId && !n.parentId && filterMatch(n)).sort((a, b) => b.createdAt - a.createdAt);
+  const getSubPages = (parentId: string) => notes.filter(n => n.parentId === parentId && filterMatch(n));
+
+  // ─── Context Menus ───
+  const openNoteMenu = (e: React.MouseEvent, noteId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, noteId }); };
+  const openNbMenu = (e: React.MouseEvent, nbId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, notebookId: nbId }); };
+
+  const noteMenuItems = (noteId: string) => [
+    { label: 'Renombrar', icon: <Edit3 size={14} />, onClick: () => { setRenamingId(noteId); setRenamingType('note'); } },
+    { label: 'Duplicar', icon: <Copy size={14} />, onClick: () => handleDuplicateNote(noteId) },
+    { label: 'Sub-pagina', icon: <FilePlus size={14} />, onClick: () => handleCreateSubPage(noteId) },
+    ...notebooks.map(nb => ({ label: `Mover a ${nb.name}`, icon: <FolderOpen size={14} />, onClick: () => handleMoveToNotebook(noteId, nb.id) })),
+    ...(notes.find(n => n.id === noteId)?.notebookId ? [{ label: 'Sacar de cuaderno', icon: <FileText size={14} />, onClick: () => handleMoveToNotebook(noteId, undefined) }] : []),
+    { label: 'Exportar (.md)', icon: <Download size={14} />, onClick: () => { const n = notes.find(x => x.id === noteId); if (n && services) exportNoteAs(services.doc, n, 'md'); } },
+    { label: 'Exportar (.txt)', icon: <Download size={14} />, onClick: () => { const n = notes.find(x => x.id === noteId); if (n && services) exportNoteAs(services.doc, n, 'txt'); } },
+    { label: 'Exportar (.pdf)', icon: <Download size={14} />, onClick: () => {
+        const n = notes.find(x => x.id === noteId);
+        if (n && services) {
+          const serviceUrl = import.meta.env.VITE_EXPORT_SERVICE_URL || 'http://localhost:3000/api/v1/export/pdf';
+          exportNoteToService(services.doc, n, serviceUrl);
+        }
+      }
+    },
+    { label: 'Eliminar', icon: <Trash2 size={14} />, onClick: () => handleDeleteNote(noteId), danger: true },
+  ];
+
+  const nbMenuItems = (nbId: string) => [
+    { label: 'Renombrar', icon: <Edit3 size={14} />, onClick: () => { setRenamingId(nbId); setRenamingType('notebook'); } },
+    { label: 'Nueva pagina aqui', icon: <FilePlus size={14} />, onClick: () => handleCreateNote(nbId) },
+    { label: 'Exportar cuaderno', icon: <Download size={14} />, onClick: () => {
+        if (!services) return;
+        const nbNotes = notes.filter(n => n.notebookId === nbId);
+        const nb = notebooks.find(n => n.id === nbId);
+        exportAllPoolAsZip(services.doc, nbNotes, nb ? [nb] : [], nb?.name || 'cuaderno');
+      }
+    },
+    { label: 'Eliminar cuaderno', icon: <Trash2 size={14} />, onClick: () => handleDeleteNotebook(nbId), danger: true },
+  ];
+
+  // ─── Note Item Renderer ───
+  const renderNoteItem = (note: Note, depth = 0) => {
+    const subs = getSubPages(note.id);
+    const isActive = note.id === activeNoteId;
+    const isRenaming = renamingId === note.id && renamingType === 'note';
+    return (
+      <div key={note.id}>
+        <div className={`sidebar-note-item ${isActive ? 'active' : ''} ${draggedNoteId === note.id ? 'dragging' : ''}`}
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          onClick={() => { setActiveNoteId(note.id); setActiveNotebookId(note.notebookId || null); }}
+          role="button" tabIndex={0}
+          onContextMenu={(e) => openNoteMenu(e, note.id)}
+          draggable onDragStart={(e) => handleDragStart(e, note.id)} onDragEnd={() => { setDraggedNoteId(null); setDragOverTarget(null); }}>
+          <span className="drag-handle"><GripVertical size={12} /></span>
+          {subs.length > 0 && (
+            <button className="note-toggle" onClick={(e) => { e.stopPropagation(); toggleCollapse(note.id); }}>
+              {collapsedNotebooks.has(note.id) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
+          <FileText className="note-icon" size={15} />
+          {isRenaming
+            ? <InlineRename value={note.title} onSave={v => handleRenameNote(note.id, v)} onCancel={() => setRenamingId(null)} />
+            : <span className="note-title">{note.title || 'Sin titulo'}</span>}
+          <button className="note-action-btn" onClick={(e) => openNoteMenu(e, note.id)}><MoreHorizontal size={14} /></button>
+        </div>
+        {!collapsedNotebooks.has(note.id) && subs.map(s => renderNoteItem(s, depth + 1))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-layout">
+      {contextMenu?.noteId && <ContextMenu x={contextMenu.x} y={contextMenu.y} items={noteMenuItems(contextMenu.noteId)} onClose={() => setContextMenu(null)} />}
+      {contextMenu?.notebookId && <ContextMenu x={contextMenu.x} y={contextMenu.y} items={nbMenuItems(contextMenu.notebookId)} onClose={() => setContextMenu(null)} />}
+
+      {/* SIDEBAR */}
+      <aside 
+        ref={sidebarRef}
+        className={`sidebar${sidebarCollapsed ? ' sidebar--collapsed' : ''}`}
+        style={{ width: sidebarCollapsed ? 0 : sidebarWidth, minWidth: sidebarCollapsed ? 0 : sidebarWidth }}
+      >
+        <div className="sidebar-header">
+          <div className="sidebar-logo" style={{ cursor: 'pointer' }} onClick={onBack} title="Volver al dashboard">
+            <ArrowLeft size={16} style={{ color: 'var(--text-tertiary)' }} />
+            <span style={{ fontSize: 13 }}>{poolName}</span>
+          </div>
+          <div className="sidebar-actions">
+            <button className="sidebar-action-btn" onClick={() => handleCreateNote()} title={activeNotebookId ? 'Nueva pagina en cuaderno' : 'Nueva pagina'}>
+              <Plus size={16} />
+            </button>
+            <button className="sidebar-action-btn" onClick={() => setCreatingNotebook(true)} title="Nuevo cuaderno">
+              <FolderPlus size={16} />
+            </button>
+            <button className="sidebar-action-btn" onClick={() => { if (services) exportAllPoolAsZip(services.doc, notes, notebooks, poolName); }} title="Exportar todo">
+              <Download size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="sidebar-search">
+          <div style={{ position: 'relative' }}>
+            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+            <input type="text" placeholder="Buscar..." className="sidebar-search-input" style={{ paddingLeft: 28 }} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="sidebar-notes">
+          {/* TASK LISTS SECTION */}
+          <div className="sidebar-section-label">Listas de Tareas</div>
+          {taskLists.map(list => (
+            <div key={list.id}
+              className={`sidebar-note-item ${activeTaskListId === list.id ? 'active' : ''}`}
+              onClick={() => { setActiveTaskListId(list.id); setActiveNoteId(null); }}
+              style={{ paddingLeft: 8 }}>
+              <ListChecks className="note-icon" size={15} />
+              <span className="note-title">{list.name}</span>
+              <button className="note-delete-btn" onClick={(e) => { e.stopPropagation(); handleDeleteTaskList(list.id); }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+
+          {creatingTaskList ? (
+            <div className="notebook-header" style={{ gap: 6, padding: '4px 8px' }}>
+              <ListChecks size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+              <InlineRename value="" onSave={handleCreateTaskList} onCancel={() => setCreatingTaskList(false)} />
+            </div>
+          ) : (
+            <button className="sidebar-action-btn" style={{ width: '100%', justifyContent: 'flex-start', padding: '4px 8px', opacity: 0.7 }} onClick={() => setCreatingTaskList(true)}>
+              <Plus size={14} style={{ marginRight: 6 }} /> Nueva lista
+            </button>
+          )}
+
+          <div className="divider" style={{ margin: '8px 0' }} />
+
+          {notebooks.length > 0 && <div className="sidebar-section-label">Cuadernos</div>}
+          {notebooks.map(nb => {
+            const isCollapsed = collapsedNotebooks.has(nb.id);
+            const nbNotes = getTopNotes(nb.id);
+            const isRenamingNb = renamingId === nb.id && renamingType === 'notebook';
+            return (
+              <div key={nb.id} className="notebook-group">
+                <div className={`notebook-header ${dragOverTarget === nb.id ? 'drop-target' : ''} ${activeNotebookId === nb.id ? 'active-nb' : ''}`}
+                  onClick={() => { toggleCollapse(nb.id); setActiveNotebookId(nb.id); }}
+                  onContextMenu={(e) => openNbMenu(e, nb.id)}
+                  onDragOver={(e) => handleDragOver(e, nb.id)}
+                  onDragLeave={() => setDragOverTarget(null)}
+                  onDrop={(e) => handleDropOnNotebook(e, nb.id)}
+                  role="button" tabIndex={0}>
+                  <span className="notebook-toggle">{isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</span>
+                  <BookOpen size={14} className="notebook-icon" />
+                  {isRenamingNb
+                    ? <InlineRename value={nb.name} onSave={v => handleRenameNotebook(nb.id, v)} onCancel={() => setRenamingId(null)} />
+                    : <span className="notebook-name">{nb.name}</span>}
+                  <button className="note-action-btn" onClick={(e) => openNbMenu(e, nb.id)}><MoreHorizontal size={14} /></button>
+                </div>
+                {!isCollapsed && (
+                  <div className="notebook-notes">
+                    {nbNotes.length === 0 && <div className="sidebar-empty-hint">Sin paginas</div>}
+                    {nbNotes.map(n => renderNoteItem(n, 1))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {creatingNotebook && (
+            <div className="notebook-header" style={{ gap: 6, padding: '4px 8px' }}>
+              <FolderPlus size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+              <InlineRename value="" onSave={handleCreateNotebook} onCancel={() => setCreatingNotebook(false)} />
+              <button className="note-action-btn" style={{ opacity: 1 }} onClick={() => setCreatingNotebook(false)}><X size={14} /></button>
+            </div>
+          )}
+
+          <div className={`sidebar-section-label ${dragOverTarget === '__uncat' ? 'drop-target-label' : ''}`}
+            onDragOver={(e) => handleDragOver(e, '__uncat')} onDragLeave={() => setDragOverTarget(null)} onDrop={handleDropOnUncategorized}
+            onClick={() => setActiveNotebookId(null)}>
+            Paginas
+          </div>
+          {getTopNotes(undefined).length === 0 && <div className="sidebar-empty-hint">{searchQuery ? 'Sin resultados' : 'Sin notas aun'}</div>}
+          {getTopNotes(undefined).map(n => renderNoteItem(n))}
+        </div>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-pool-info pool-id-copy" onClick={copyPoolId} title="Click para copiar ID">
+            <div className="status-dot" />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+              {/* Intentar mostrar código completo si hay URL */}
+              {(() => {
+                if (signalingUrl) {
+                  try {
+                    const url = new URL(signalingUrl);
+                    return `${poolId}@${url.hostname}`;
+                  } catch { }
+                }
+                return poolId;
+              })()}
+            </span>
+            <Clipboard size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
+            {copied && <span className="copied-badge">Copiado</span>}
+          </div>
+          <button className="theme-toggle-btn" onClick={toggleTheme}>{theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}</button>
+          <button className="theme-toggle-btn" onClick={() => setShowQr(true)} title="Mostrar QR"><QrCode size={14} /></button>
+        </div>
+      </aside>
+
+      {/* Resizer */}
+      {!sidebarCollapsed && (
+        <div 
+          role="separator" 
+          tabIndex={0} 
+          aria-label="Cambiar el tamaño lateral"
+          className="sidebar-resizer"
+          onMouseDown={handleMouseDownResizer}
+          onClick={() => { if (!isDraggingRef.current) setSidebarCollapsed(true); }}
+        >
+          <div className="resizer-tooltip">
+            <div><strong>Cerrar</strong> Clic o Ctrl+\</div>
+            <div><strong>Redimensionar</strong> Arrastrar</div>
+          </div>
+        </div>
+      )}
+
+      {/* SIDEBAR COLLAPSE TOGGLE — OUTSIDE aside so it's always visible */}
+      {settings.sidebarStyle === 'floating' && (
+        <button
+          ref={sidebarCollapseBtnRef}
+          className="sidebar-collapse-btn"
+          style={{ left: sidebarCollapsed ? 4 : sidebarWidth - 14 }}
+          onClick={() => setSidebarCollapsed(c => !c)}
+          title={sidebarCollapsed ? 'Expandir panel' : 'Colapsar panel'}
+        >
+          {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      )}
+
+      {/* MAIN CONTENT */}
+      <div className="main-content">
+        <div className="main-header">
+          <div className="main-header-left">
+            {settings.sidebarStyle === 'header' && (
+              <button className="sidebar-header-toggle" onClick={() => setSidebarCollapsed(c => !c)} title="Alternar panel lateral">
+                <Sidebar size={16} />
+              </button>
+            )}
+            <div className="breadcrumb">
+              <span style={{ cursor: 'pointer' }} onClick={onBack}>{application_name}</span>
+              <span className="breadcrumb-separator">/</span>
+              <span>{poolName}</span>
+              {activeNote?.notebookId && (
+                <><span className="breadcrumb-separator">/</span><span>{notebooks.find(nb => nb.id === activeNote.notebookId)?.name}</span></>
+              )}
+              {activeTaskListId && (
+                <><span className="breadcrumb-separator">/</span><span className="breadcrumb-current">{taskLists.find(l => l.id === activeTaskListId)?.name}</span></>
+              )}
+              {activeNoteId && (
+                <><span className="breadcrumb-separator">/</span><span className="breadcrumb-current">{activeNote?.title || 'Selecciona una nota'}</span></>
+              )}
+            </div>
+          </div>
+          <div className="main-header-right">
+            <div className="header-user">
+              <div className="header-user-dot" style={{ background: user.color }} />
+              <span>{user.name}</span>
+            </div>
+            <button className="header-btn" onClick={() => setShowSettings(true)} title="Ajustes">
+              <Settings size={14} strokeWidth={1.5} />
+            </button>
+            <button className="header-btn" onClick={onBack}><ArrowLeft size={14} /><span>Dashboard</span></button>
+          </div>
+        </div>
+
+        {activeTaskListId && services ? (
+          <TaskBoard
+            taskList={taskLists.find(t => t.id === activeTaskListId)!}
+            service={services.tasks}
+            doc={services.doc}
+          />
+        ) : activeNote && services ? (
+          <Editor
+            key={activeNote.id}
+            doc={services.doc}
+            provider={services.network.provider}
+            user={{ name: user.name, color: user.color }}
+            noteId={activeNote.id}
+            noteTitle={activeNote.title}
+            onTitleChange={handleTitleChange}
+          />
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', gap: 12 }}>
+            <FileText size={48} strokeWidth={1} />
+            <p style={{ fontSize: 16 }}>Selecciona una nota, lista de tareas o crea una nueva</p>
+            <button className="login-btn-primary" style={{ width: 'auto' }} onClick={() => handleCreateNote()}>
+              <Plus size={16} /> Nueva pagina
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* QR MODAL */}
+      {showQr && (
+        <QrModal
+          value={(() => {
+            let code = poolId;
+            if (signalingUrl) {
+              try {
+                const url = new URL(signalingUrl);
+                code = `${poolId}@${url.hostname}`;
+              } catch { /* ignore */ }
+            }
+            return code;
+          })()}
+          onClose={() => setShowQr(false)}
+        />
+      )}
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} settings={settings} />}
+    </div>
+  );
+}

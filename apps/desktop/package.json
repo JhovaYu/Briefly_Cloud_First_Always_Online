@@ -1,0 +1,100 @@
+{
+  "name": "Briefly",
+  "private": true,
+  "version": "1.2.0",
+  "description": "Notas colaborativas P2P — sin servidores, inspirado en Notion y Obsidian",
+  "author": "MasterCoders AI",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "signaling": "y-webrtc-signaling",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder --win",
+    "electron:preview": "electron .",
+    "test": "vitest run"
+  },
+  "build": {
+    "appId": "com.briefly.app",
+    "productName": "Briefly",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "asarUnpack": [
+      "**/node_modules/y-webrtc-signaling/**",
+      "**/node_modules/y-webrtc/**",
+      "**/node_modules/simple-peer/**",
+      "**/node_modules/ws/**",
+      "**/node_modules/lib0/**",
+      "**/node_modules/y-protocols/**"
+    ]
+  },
+  "dependencies": {
+    "@tiptap/extension-collaboration": "^3.19.0",
+    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-table": "^3.19.0",
+    "@tiptap/extension-table-cell": "^3.19.0",
+    "@tiptap/extension-table-header": "^3.19.0",
+    "@tiptap/extension-table-row": "^3.19.0",
+    "@tiptap/extension-task-item": "^3.19.0",
+    "@tiptap/extension-task-list": "^3.19.0",
+    "@tiptap/pm": "^3.19.0",
+    "@tiptap/react": "^3.19.0",
+    "@tiptap/starter-kit": "^3.19.0",
+    "@tiptap/y-tiptap": "^3.0.2",
+    "@types/qrcode": "^1.5.6",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.33.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.563.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-force-graph-2d": "^1.29.1",
+    "tailwind-merge": "^3.4.0",
+    "vite-plugin-node-polyfills": "^0.25.0",
+    "y-indexeddb": "^9.0.12",
+    "y-prosemirror": "^1.3.7",
+    "y-webrtc": "^10.3.0",
+    "yjs": "^13.6.29"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@tuxnotas/shared": "^1.0.0",
+    "@types/node": "^24.10.13",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.1.2",
+    "electron": "35.0.0",
+    "electron-builder": "^26.0.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "jsdom": "^29.0.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4",
+    "vitest": "^4.1.2",
+    "wait-on": "^8.0.3"
+  }
+}
