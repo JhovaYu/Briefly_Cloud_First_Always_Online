@@ -1,0 +1,114 @@
+upstream workspace {
+        server workspace-service:8001;
+    }
+
+    upstream collaboration {
+        server collaboration-service:8002;
+    }
+
+    upstream planning {
+        server planning-service:8003;
+    }
+
+    upstream intelligence {
+        server intelligence-service:8004;
+    }
+
+    upstream utility {
+        server utility-service:8005;
+    }
+
+    # Health check endpoint at nginx level
+    server {
+        listen 80;
+
+        location /health {
+            return 200 '{"status": "ok", "service": "nginx"}';
+            add_header Content-Type application/json;
+        }
+
+        # X-Shared-Secret validation for proxied routes
+        # Health endpoints are exempted
+        location ~ ^/api/workspaces/ {
+            set $expected_secret "${SHARED_SECRET}";
+
+            if ($http_x_shared_secret != "${SHARED_SECRET}") {
+                return 401 '{"error": "unauthorized"}';
+            }
+
+            rewrite ^/api/workspaces/(.*) /$1 break;
+            proxy_pass http://workspace;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~ ^/api/planning/ {
+            set $expected_secret "${SHARED_SECRET}";
+
+            if ($http_x_shared_secret != "${SHARED_SECRET}") {
+                return 401 '{"error": "unauthorized"}';
+            }
+
+            rewrite ^/api/planning/(.*) /$1 break;
+            proxy_pass http://planning;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~ ^/api/intelligence/ {
+            set $expected_secret "${SHARED_SECRET}";
+
+            if ($http_x_shared_secret != "${SHARED_SECRET}") {
+                return 401 '{"error": "unauthorized"}';
+            }
+
+            rewrite ^/api/intelligence/(.*) /$1 break;
+            proxy_pass http://intelligence;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~ ^/api/utility/ {
+            set $expected_secret "${SHARED_SECRET}";
+
+            if ($http_x_shared_secret != "${SHARED_SECRET}") {
+                return 401 '{"error": "unauthorized"}';
+            }
+
+            rewrite ^/api/utility/(.*) /$1 break;
+            proxy_pass http://utility;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ~ ^/collab/ {
+            set $expected_secret "${SHARED_SECRET}";
+
+            if ($http_x_shared_secret != "${SHARED_SECRET}") {
+                return 401 '{"error": "unauthorized"}';
+            }
+
+            rewrite ^/collab/(.*) /$1 break;
+            proxy_pass http://collaboration;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 86400;
+        }
+    }

@@ -1,0 +1,14 @@
+[project]
+name = "workspace-service"
+version = "0.1.0"
+description = "Workspace Service - Briefl cloud-first backend"
+requires-python = ">=3.12"
+
+[tool.pyright]
+pythonPath = ["${workspaceFolder}/apps/backend/workspace-service"]
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+
+[tool.uvicorn]
+host = "0.0.0.0"
+port = 8001

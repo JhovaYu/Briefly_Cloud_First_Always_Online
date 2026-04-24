@@ -1,0 +1,12 @@
+{
+  "pythonPath": [
+    "${workspaceFolder}/apps/backend/workspace-service",
+    "${workspaceFolder}/apps/backend/collaboration-service",
+    "${workspaceFolder}/apps/backend/planning-service",
+    "${workspaceFolder}/apps/backend/intelligence-service",
+    "${workspaceFolder}/apps/backend/utility-service"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "exclude": ["**/node_modules/**", "**/dist/**", "**/build/**"]
+}

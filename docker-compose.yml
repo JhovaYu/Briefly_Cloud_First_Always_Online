@@ -1,0 +1,139 @@
+services:
+  workspace-service:
+    build:
+      context: ./apps/backend/workspace-service
+      dockerfile: Dockerfile
+    container_name: workspace-service
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_PORT=8001
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - briefly-internal
+
+  collaboration-service:
+    build:
+      context: ./apps/backend/collaboration-service
+      dockerfile: Dockerfile
+    container_name: collaboration-service
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_PORT=8002
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - briefly-internal
+
+  planning-service:
+    build:
+      context: ./apps/backend/planning-service
+      dockerfile: Dockerfile
+    container_name: planning-service
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_PORT=8003
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - briefly-internal
+
+  intelligence-service:
+    build:
+      context: ./apps/backend/intelligence-service
+      dockerfile: Dockerfile
+    container_name: intelligence-service
+    ports:
+      - "8004:8004"
+    environment:
+      - SERVICE_PORT=8004
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - briefly-internal
+
+  utility-service:
+    build:
+      context: ./apps/backend/utility-service
+      dockerfile: Dockerfile
+    container_name: utility-service
+    ports:
+      - "8005:8005"
+    environment:
+      - SERVICE_PORT=8005
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - briefly-internal
+
+  nginx:
+    build:
+      context: ./infra/nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    ports:
+      - "80:80"
+    environment:
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 64m
+    depends_on:
+      - workspace-service
+      - collaboration-service
+      - planning-service
+      - intelligence-service
+      - utility-service
+    networks:
+      - briefly-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep nginx && wget --spider -q http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  briefly-internal:
+    driver: bridge
