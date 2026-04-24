@@ -100,7 +100,6 @@ upstream workspace {
                 return 401 '{"error": "unauthorized"}';
             }
 
-            rewrite ^/collab/(.*) /$1 break;
             proxy_pass http://collaboration;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
