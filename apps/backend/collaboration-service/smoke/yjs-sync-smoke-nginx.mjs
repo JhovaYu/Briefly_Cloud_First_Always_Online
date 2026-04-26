@@ -1,38 +1,27 @@
 /**
- * PM-03D.4 / PM-03D.5 Yjs sync smoke test.
+ * PM-03D.5 Yjs sync smoke test via Nginx.
  *
- * Supports two modes:
- * - Direct mode (default): connects directly to localhost:8002
- * - Nginx mode (COLLAB_USE_NGINX=true): routes through Nginx with X-Shared-Secret injection
- *
- * Reconnect test: set COLLAB_TEST_RECONNECT=true
- *
- * Prerequisites:
- *   - collaboration-service running on port 8002 with ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true
- *   - SUPABASE_TEST_JWT set in environment (real Supabase JWT)
- *   - workspace-service running (for ticket validation)
- *   - Node.js with ws, y-websocket, yjs installed
+ * Same as yjs-sync-smoke.mjs but routes through Nginx at localhost
+ * and passes X-Shared-Secret header via custom WebSocket class.
  *
  * Usage:
  *   cd apps/backend/collaboration-service/smoke
- *   npm install
- *   node yjs-sync-smoke.mjs                    # direct mode
- *   SHARED_SECRET=changeme node yjs-sync-smoke.mjs  # nginx mode
- *   COLLAB_TEST_RECONNECT=true node yjs-sync-smoke.mjs  # with reconnect test
+ *   node yjs-sync-smoke-nginx.mjs
  *
- * Security:
- *   - SUPABASE_TEST_JWT is read from env and never printed or logged
- *   - Tickets are masked (last 4 chars only) in output
+ * Environment variables:
+ *   COLLAB_BASE_URL          - HTTP base (default: http://localhost)
+ *   COLLAB_WS_BASE_URL      - WS base (default: ws://localhost/collab/crdt)
+ *   SHARED_SECRET           - X-Shared-Secret (default: changeme)
  */
 
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import WebSocket from 'ws';
 
-const HTTP_BASE = process.env.COLLAB_BASE_URL || 'http://localhost:8002';
-const WS_BASE = process.env.COLLAB_WS_BASE_URL || 'ws://localhost:8002/collab/crdt';
-const WORKSPACE_SERVICE_URL = process.env.WORKSPACE_SERVICE_URL || HTTP_BASE.replace(':8002', ':8001');
-const USE_NGINX = process.env.COLLAB_USE_NGINX === 'true';
+const HTTP_BASE = process.env.COLLAB_BASE_URL || 'http://localhost';
+const WS_BASE = process.env.COLLAB_WS_BASE_URL || 'ws://localhost/collab/crdt';
+// Workspace-service is NOT behind Nginx for create workspace - use direct port
+const WORKSPACE_SERVICE_URL = process.env.WORKSPACE_SERVICE_URL || 'http://localhost:8001';
 const SHARED_SECRET = process.env.SHARED_SECRET || 'changeme';
 const TEST_RECONNECT = process.env.COLLAB_TEST_RECONNECT === 'true';
 
@@ -41,18 +30,25 @@ function mask(value) {
   return '...' + value.slice(-4);
 }
 
-class HeaderInjectingWebSocket extends WebSocket {
-  constructor(url, protocols) {
-    super(url, protocols, {
-      headers: { 'X-Shared-Secret': SHARED_SECRET },
-    });
-  }
-}
-
 function assertEnv() {
   const jwt = process.env.SUPABASE_TEST_JWT;
   if (!jwt) {
     throw new Error('SUPABASE_TEST_JWT environment variable is not set');
+  }
+}
+
+/**
+ * Custom WebSocket class that injects X-Shared-Secret header.
+ * Used for Nginx-proxied connections where the secret must be passed
+ * as an HTTP header (not as a query param).
+ */
+class HeaderInjectingWebSocket extends WebSocket {
+  constructor(url, protocols) {
+    super(url, protocols, {
+      headers: {
+        'X-Shared-Secret': SHARED_SECRET,
+      },
+    });
   }
 }
 
@@ -64,6 +60,7 @@ async function getTicket(workspaceId, documentId) {
     headers: {
       'Authorization': 'Bearer ' + jwt,
       'Content-Type': 'application/json',
+      'X-Shared-Secret': SHARED_SECRET,
     },
     body: JSON.stringify({}),
   });
@@ -74,10 +71,13 @@ async function getTicket(workspaceId, documentId) {
   return response.json();
 }
 
+/**
+ * Workspace creation uses direct port (JWT validation bypass in test mode).
+ * Collaboration traffic goes through Nginx with X-Shared-Secret injection.
+ */
 async function ensureWorkspaceAndDocument() {
   const jwt = process.env.SUPABASE_TEST_JWT;
 
-  // Try existing env vars first
   const wsId = process.env.COLLAB_WORKSPACE_ID;
   const docId = process.env.COLLAB_DOCUMENT_ID;
 
@@ -90,23 +90,29 @@ async function ensureWorkspaceAndDocument() {
     }
   }
 
-  // Create workspace
-  const wsResp = await fetch(`${WORKSPACE_SERVICE_URL}/workspaces`, {
+  // Workspace service not behind Nginx X-Shared-Secret (uses Nginx /api/workspaces/ route)
+  // Create via direct port to bypass any JWT expiry issues in test mode
+  const wsResp = await fetch('http://localhost:8001/workspaces', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'smoke-test-workspace' }),
+    body: JSON.stringify({ name: 'smoke-test-workspace-nginx' }),
   });
-  if (!wsResp.ok) throw new Error(`Failed to create workspace: ${wsResp.status}`);
+  if (!wsResp.ok) {
+    const errText = await wsResp.text();
+    throw new Error(`Failed to create workspace: ${wsResp.status} - ${errText}`);
+  }
   const workspace = await wsResp.json();
   console.log(`Created workspace: ${mask(workspace.id)}`);
 
-  // Create document
-  const docResp = await fetch(`${WORKSPACE_SERVICE_URL}/workspaces/${workspace.id}/documents`, {
+  const docResp = await fetch(`http://localhost:8001/workspaces/${workspace.id}/documents`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'smoke-test-doc' }),
+    body: JSON.stringify({ title: 'smoke-test-doc-nginx' }),
   });
-  if (!docResp.ok) throw new Error(`Failed to create document: ${docResp.status}`);
+  if (!docResp.ok) {
+    const errText = await docResp.text();
+    throw new Error(`Failed to create document: ${docResp.status} - ${errText}`);
+  }
   const document = await docResp.json();
   console.log(`Created document: ${mask(document.id)}\n`);
 
@@ -130,17 +136,17 @@ async function runSmokeTest() {
   let syncBAOK = false;
 
   try {
-    console.log('=== PM-03D.4 Yjs Sync Smoke (WebsocketProvider) ===\n');
+    console.log('=== PM-03D.5 Yjs Sync Smoke (via Nginx) ===\n');
+    console.log(`HTTP_BASE:  ${HTTP_BASE}`);
+    console.log(`WS_BASE:     ${WS_BASE}`);
+    console.log(`SHARED_SECRET: ${mask(SHARED_SECRET)}\n`);
 
-    // Step 0: Env check
     assertEnv();
     console.log('SUPABASE_TEST_JWT: present (not printed)\n');
 
-    // Step 1: Ensure workspace and document exist
     const { workspaceId, documentId } = await ensureWorkspaceAndDocument();
     console.log(`Using room: ${mask(workspaceId)}/${mask(documentId)}\n`);
 
-    // Step 2: Get two separate tickets
     let ticketA, ticketB;
     let roleA, roleB;
     try {
@@ -159,22 +165,18 @@ async function runSmokeTest() {
     }
     console.log('Ticket endpoint: PASS\n');
 
-    // Step 3: Create Y.Docs
     docA = new Y.Doc();
     docB = new Y.Doc();
     const textA = docA.getText('content');
     const textB = docB.getText('content');
 
-    // Step 4: Connect Provider A
-    const wsClass = USE_NGINX ? HeaderInjectingWebSocket : WebSocket;
-    const actualWsBase = USE_NGINX ? 'ws://localhost/collab/crdt' : WS_BASE;
-    console.log(USE_NGINX ? 'Connecting Provider A via Nginx (X-Shared-Secret injected)...' : 'Connecting Provider A...');
+    console.log('Connecting Provider A via Nginx (X-Shared-Secret header injected)...');
     providerA = new WebsocketProvider(
-      actualWsBase,
+      WS_BASE,
       `${workspaceId}/${documentId}`,
       docA,
       {
-        WebSocketPolyfill: wsClass,
+        WebSocketPolyfill: HeaderInjectingWebSocket,
         params: { ticket: ticketA },
       }
     );
@@ -195,14 +197,13 @@ async function runSmokeTest() {
     connectAOK = true;
     console.log('Provider A connected: PASS\n');
 
-    // Step 5: Connect Provider B
-    console.log(USE_NGINX ? 'Connecting Provider B via Nginx (X-Shared-Secret injected)...' : 'Connecting Provider B...');
+    console.log('Connecting Provider B via Nginx (X-Shared-Secret header injected)...');
     providerB = new WebsocketProvider(
-      actualWsBase,
+      WS_BASE,
       `${workspaceId}/${documentId}`,
       docB,
       {
-        WebSocketPolyfill: wsClass,
+        WebSocketPolyfill: HeaderInjectingWebSocket,
         params: { ticket: ticketB },
       }
     );
@@ -223,7 +224,6 @@ async function runSmokeTest() {
     connectBOK = true;
     console.log('Provider B connected: PASS\n');
 
-    // Step 6: Wait for initial sync
     console.log('Waiting for initial sync...');
     await new Promise((resolve) => {
       const timeout = setTimeout(resolve, 3000);
@@ -239,7 +239,6 @@ async function runSmokeTest() {
     });
     console.log('Initial sync detected.\n');
 
-    // Step 7: A writes -> B should receive
     console.log('Testing A -> B sync...');
     let bReceivedA = false;
     const bObserver = () => {
@@ -254,7 +253,6 @@ async function runSmokeTest() {
       textA.insert(0, 'Hello from A');
     });
 
-    // Wait up to 5s for B to receive
     for (let i = 0; i < 50; i++) {
       await sleep(100);
       if (bReceivedA) break;
@@ -269,7 +267,6 @@ async function runSmokeTest() {
       console.log(`A -> B sync: FAIL (textB="${textBValue}", expected "Hello from A")\n`);
     }
 
-    // Step 8: B writes -> A should receive
     console.log('Testing B -> A sync...');
     let aReceivedB = false;
     const aObserver = () => {
@@ -284,7 +281,6 @@ async function runSmokeTest() {
       textB.insert(0, 'Hello from B');
     });
 
-    // Wait up to 5s for A to receive
     for (let i = 0; i < 50; i++) {
       await sleep(100);
       if (aReceivedB) break;
@@ -299,35 +295,32 @@ async function runSmokeTest() {
       console.log(`B -> A sync: FAIL (textA="${textAValue}", expected "Hello from B")\n`);
     }
 
-    // Step 9: Reconnect test (optional, triggered by COLLAB_TEST_RECONNECT=true)
+    // Reconnect test (optional, triggered by COLLAB_TEST_RECONNECT=true)
     let reconnectOK = false;
     if (TEST_RECONNECT) {
-      console.log('=== Reconnect Test ===\n');
+      console.log('=== Reconnect Test via Nginx ===\n');
       console.log('Destroying Provider B...');
       providerB.destroy();
       providerB = null;
 
-      // Wait a bit for cleanup
       await sleep(500);
 
-      // Get a fresh ticket for the same room
-      console.log('Fetching fresh ticket B2 for same room...');
+      console.log('Fetching fresh ticket B2 for same room (via Nginx)...');
       try {
         const rB2 = await getTicket(workspaceId, documentId);
         const ticketB2 = rB2.ticket;
         console.log(`Ticket B2: ${mask(ticketB2)}\n`);
 
-        // Create a new Y.Doc and Provider B2
-        console.log('Creating new Y.Doc B2 and Provider B2...');
+        console.log('Creating new Y.Doc B2 and Provider B2 via Nginx...');
         const docB2 = new Y.Doc();
         const textB2 = docB2.getText('content');
 
         providerB = new WebsocketProvider(
-          actualWsBase,
+          WS_BASE,
           `${workspaceId}/${documentId}`,
           docB2,
           {
-            WebSocketPolyfill: wsClass,
+            WebSocketPolyfill: HeaderInjectingWebSocket,
             params: { ticket: ticketB2 },
           }
         );
@@ -347,7 +340,6 @@ async function runSmokeTest() {
         });
         console.log('Provider B2 reconnected: PASS\n');
 
-        // Wait for sync
         console.log('Waiting for B2 to sync with current state...');
         await new Promise((resolve) => {
           const timeout = setTimeout(resolve, 3000);
@@ -363,7 +355,6 @@ async function runSmokeTest() {
         });
         console.log('Provider B2 synced.\n');
 
-        // Verify B2 received "Hello from B" from the current state
         const b2Received = textB2.toString();
         if (b2Received === 'Hello from B') {
           console.log(`B2 sees current state: PASS (textB2="${b2Received}")\n`);
@@ -371,7 +362,6 @@ async function runSmokeTest() {
           console.log(`B2 sees current state: PARTIAL (textB2="${b2Received}", expected "Hello from B")\n`);
         }
 
-        // B2 writes new text
         console.log('B2 writes "Hello from B2"...');
         let aReceivedB2 = false;
         const aObserver2 = () => {
@@ -420,19 +410,20 @@ async function runSmokeTest() {
     console.log('');
 
     if (testPassed) {
-      console.log('SYNC PASS: bidirectional text sync verified');
+      console.log('SYNC PASS: bidirectional text sync via Nginx verified');
     } else {
       console.log('SYNC FAIL: see above for details');
-      if (!syncABOK) console.log(`  textA="${textA.toString()}" textB="${textBValue}"`);
     }
 
   } catch (error) {
     console.error(`\nSMOKE TEST ERROR: ${error.message}`);
-    console.log('\nPrerequisites:');
-    console.log('  1. collaboration-service running on port 8002');
-    console.log('  2. ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true');
-    console.log('  3. workspace-service running (for ticket validation)');
-    console.log('  4. SUPABASE_TEST_JWT set in environment');
+    console.log('\nNginx smoke prerequisites:');
+    console.log('  1. nginx running on port 80');
+    console.log('  2. collaboration-service running behind nginx');
+    console.log('  3. ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true');
+    console.log('  4. workspace-service running');
+    console.log('  5. SUPABASE_TEST_JWT set');
+    console.log('  6. X-Shared-Secret header injected via custom WebSocket');
   } finally {
     if (providerA) providerA.destroy();
     if (providerB) providerB.destroy();

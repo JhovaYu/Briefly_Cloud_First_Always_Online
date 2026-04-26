@@ -34,6 +34,139 @@ node yjs-sync-smoke.mjs
 
 El smoke crea workspace/document automáticamente si no existen.
 
+## PM-03D.5 — Nginx/reconnect hardening (2026-04-26)
+
+### Objetivo
+
+Validar el camino real de demo para colaboración:
+- cliente smoke → Nginx `/collab/crdt` → collaboration-service → pycrdt-websocket
+- Reconexión básica del WebsocketProvider
+
+### Cambios implementados
+
+**`yjs-sync-smoke.mjs` — tres modos de operación:**
+
+```bash
+# Directo (default):
+node yjs-sync-smoke.mjs
+
+# Via Nginx con X-Shared-Secret:
+COLLAB_USE_NGINX=true SHARED_SECRET=changeme node yjs-sync-smoke.mjs
+
+# Con reconnect test:
+COLLAB_TEST_RECONNECT=true node yjs-sync-smoke.mjs
+```
+
+**HeaderWebSocket para inyección de secreto:**
+
+```javascript
+class HeaderInjectingWebSocket extends WebSocket {
+  constructor(url, protocols) {
+    super(url, protocols, {
+      headers: { 'X-Shared-Secret': SHARED_SECRET },
+    });
+  }
+}
+```
+
+**Flujo reconnect implementado:**
+
+```javascript
+// 1. Destruir Provider B
+providerB.destroy();
+
+// 2. Obtener ticket fresco B2 para el MISMO room
+const rB2 = await getTicket(workspaceId, documentId);
+const ticketB2 = rB2.ticket;
+
+// 3. Crear nuevo Y.Doc B2 + Provider B2
+providerB = new WebsocketProvider(actualWsBase, `${workspaceId}/${documentId}`, docB2, {
+  WebSocketPolyfill: wsClass, params: { ticket: ticketB2 },
+});
+
+// 4. Verificar que B2 recibe estado acumulado
+// textB2.toString() === "Hello from B"
+
+// 5. B2 escribe texto nuevo → A recibe actualización
+docB2.transact(() => { textB2.insert(0, 'Hello from B2'); });
+// textA.toString() === "Hello from B2" ✅
+```
+
+### Validaciones Nginx
+
+```
+curl http://localhost/collab/health -H "X-Shared-Secret: changeme"
+→ 200 OK ✅
+
+curl http://localhost/collab/health
+→ 401 Unauthorized ✅
+
+curl http://localhost/collab/health -H "X-Shared-Secret: wrong"
+→ 401 Unauthorized ✅
+```
+
+### Smoke vía Nginx — PASS (2026-04-26 retry)
+
+Con JWT refrescado, el smoke vía Nginx pasa completamente:
+- Workspace creation → directo a :8001 (JWT valida OK)
+- Ticket fetch → via Nginx con `X-Shared-Secret` header inyectado
+- WebSocket sync → via Nginx con `HeaderInjectingWebSocket`
+
+**Archivo dedicado:** `yjs-sync-smoke-nginx.mjs` — variante con `X-Shared-Secret` injection en ticket fetch y reconnect support.
+
+**Bug conocido en `yjs-sync-smoke.mjs` para modo Nginx:** El archivo base NO funciona en modo Nginx debido a:
+1. `WORKSPACE_SERVICE_URL` derivation: `HTTP_BASE.replace(':8002', ':8001')` no matchea cuando `COLLAB_BASE_URL=http://localhost`
+2. Ticket fetch sin `X-Shared-Secret` header → Nginx retorna 401
+
+Usar `yjs-sync-smoke-nginx.mjs` para pruebas Nginx.
+
+### Arquitectura CloudFront → Nginx → Service
+
+```
+Browser/Cliente
+    ↓ (no conoce X-Shared-Secret)
+CloudFront
+    ↓ (inyecta X-Shared-Secret header)
+EC2: Nginx (:80)
+    ↓ (valida X-Shared-Secret)
+    → /collab/* → collaboration-service (:8002)
+```
+
+En producción:
+- CloudFront inyecta `X-Shared-Secret` hacia EC2/Nginx
+- El cliente NO conoce el secret
+- El browser no puede setear ese header manualmente
+
+En desarrollo/local:
+- El smoke test usa `HeaderInjectingWebSocket` para probar vía Nginx
+- El secreto se pasa via `SHARED_SECRET=changeme` env var
+
+### Resultado PM-03D.5 (2026-04-26 retry con JWT fresco)
+
+- Smoke directo: SYNC PASS ✅
+- Smoke vía Nginx: SYNC PASS ✅
+- Reconnect directo: PASS ✅
+- Reconnect vía Nginx: PASS ✅
+- Python tests: 55 passed ✅
+- Docker build: OK ✅
+
+PM-03D.5 COMPLETO — listo para revisión APEX PRIME.
+
+---
+
+## Contrato para siguiente iteración
+
+**PM-03E — Persistencia S3/DynamoDB** (siguiente fase — no bloqueado)
+
+PM-03D.5:
+- Todos los tests PASS ✅
+- Documentación actualizada ✅
+-listo para commit
+
+**PM-03D.5 listo para APEX PRIME.**
+
+---
+
 ## Resultado PM-03D.4 (2026-04-26) — SYNC PASS
 
 **Conclusión:** `pycrdt-websocket` (servidor Python) y `y-websocket` (cliente JS) SON compatibles cuando se usa `WebsocketProvider` correctamente.

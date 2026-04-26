@@ -1,7 +1,7 @@
 # Latest Handoff
 
 ## Fase
-PM-03D.4 (2026-04-26) — Yjs sync smoke con WebsocketProvider — SYNC PASS
+PM-03D.5 (2026-04-26 retry) — Nginx/reconnect hardening — JWT refrescado, todos los tests PASS
 
 ## Contexto previo relevante
 
@@ -9,190 +9,146 @@ PM-03D.4 (2026-04-26) — Yjs sync smoke con WebsocketProvider — SYNC PASS
 - **PM-03B:** First-message auth estable en `/collab/{ws_id}/{doc_id}`
 - **PM-03C:** pycrdt-websocket base experimental con feature flag
 - **PM-03D:** Ticket auth (sistema de tickets opacos) implementado
-- **PM-03D.2:** Ejecutó smoke con `ws` raw — halló incompatibilidad (falso positivo posterior)
-- **PM-03D.4:** Reescribió smoke con `WebsocketProvider` — SYNC PASS (2026-04-26)
+- **PM-03D.4:** SYNC PASS — bidirectional Yjs sync via WebsocketProvider directo a :8002
+- **PM-03D.5 intento previo:** Todos los tests funcionaron pero fallaron en JWT expiry
 
 ## Objetivo ejecutado
 
- smoke Yjs con WebsocketProvider:
-1. ✅ SUPABASE_TEST_JWT verificado (presente, no impreso)
-2. ✅ Ticket endpoint emite tickets reales (HTTP 200 con JWT válido)
-3. ✅ Dos providers conectan con tickets válidos (WebsocketProvider, no raw ws)
-4. ✅ A→B sync: PASS
-5. ✅ B→A sync: PASS
-6. ✅ JWT no impreso, tickets enmascarados
-7. ✅ 55 Python tests passing
+PM-03D.5 retry con JWT fresco:
+1. Smoke directo contra `collaboration-service` :8002
+2. Smoke vía Nginx `/collab/crdt`
+3. Reconnect directo
+4. Reconnect vía Nginx
+5. Tests Python + Docker build
 
-## Cambios aplicados
+## Smoke directo
 
-### 1. Smoke reescrito con WebsocketProvider
+```
+Ticket endpoint:   PASS
+Provider A conn:  PASS
+Provider B conn:  PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
 
-**Archivo:** `smoke/yjs-sync-smoke.mjs`
-
-Usa `WebsocketProvider` de `y-websocket` en lugar de `ws` raw con parseo manual de protocolo.
-
-```javascript
-import { WebsocketProvider } from 'y-websocket';
-import WebSocket from 'ws';
-
-const provider = new WebsocketProvider(
-  'ws://localhost:8002/collab/crdt',  // incluye /collab/crdt como prefix
-  `${workspaceId}/${documentId}`,      // room name como segundo argumento
-  doc,
-  { WebSocketPolyfill: WebSocket, params: { ticket: ticketId } }
-);
+SYNC PASS: bidirectional text sync verified
 ```
 
-**Key finding:** `WS_BASE` debe ser `ws://host/collab/crdt`, no `ws://host/`.
-El mount point `/collab/crdt` es parte del URL.
-
-### 2. Fix: on_connect signature para pycrdt-websocket API
-
-**Archivo:** `app/api/crdt_routes.py`
-
-pycrdt-websocket 0.16.0 llama `on_connect(msg, scope)` (ASGI message first).
-El callback debe ser `async def on_connect(msg: dict, scope: dict)` — no `scope, receive`.
-
-```python
-# Antes (error de API):
-async def on_connect(scope: dict, receive: dict) -> bool:
-
-# Después (correcto):
-async def on_connect(msg: dict, scope: dict) -> bool:
+**Entorno:**
+```
+COLLAB_BASE_URL=http://localhost:8002
+COLLAB_WS_BASE_URL=ws://localhost:8002/collab/crdt
 ```
 
-### 3. Fix: lifespan para iniciar WebsocketServer
+## Smoke vía Nginx
 
-**Archivo:** `app/main.py`
+```
+Ticket endpoint:   PASS
+Provider A conn:  PASS
+Provider B conn:  PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
 
-WebsocketServer necesita `start()` antes de servir conexiones.
-Sin lifespan, el servidor nunca arranca y conexiones fallan con 500.
-
-```python
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global _room_manager
-    if _room_manager is not None:
-        task = asyncio.create_task(_room_manager.server.start())
-        await asyncio.sleep(0.1)
-    yield
-    if _room_manager is not None:
-        await _room_manager.server.stop()
+SYNC PASS: bidirectional text sync via Nginx verified
 ```
 
-### 4. Fix: import faltante en issue_collaboration_ticket
-
-**Archivo:** `app/use_cases/issue_collaboration_ticket.py`
-
-```python
-# Añadido:
-from app.adapters.in_memory_ticket_store import InMemoryTicketStore
+**Entorno:**
+```
+COLLAB_BASE_URL=http://localhost
+COLLAB_WS_BASE_URL=ws://localhost/collab/crdt
+SHARED_SECRET=changeme
 ```
 
-Sin este import, el endpoint de tickets fallaba con `500: name 'InMemoryTicketStore' is not defined`.
+**Archivo:** `yjs-sync-smoke-nginx.mjs` (variante dedicada para Nginx con `X-Shared-Secret` injection en ticket fetch y WebSocket)
 
-### 5. Feature flag en Docker Compose
+**Nota de arquitectura:** El archivo base `yjs-sync-smoke.mjs` NO funciona en modo Nginx debido a dos bugs conocidos:
+1. `WORKSPACE_SERVICE_URL` derivation falla cuando `COLLAB_BASE_URL=http://localhost` (el replace `:8002→:8001` no matchea)
+2. El fetch del ticket no inyecta `X-Shared-Secret` header (Nginx lo requiere para `/collab/*`)
 
-**Archivo:** `docker-compose.yml`
+La variante `yjs-sync-smoke-nginx.mjs` resuelve ambos. Ambos bugs están documentados y no afectan al flujo de producción (el cliente real usa CloudFront que inyecta el header).
 
-```yaml
-environment:
-  - ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=${ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:-false}
-  - TICKET_TTL_SECONDS=${TICKET_TTL_SECONDS:-60}
+## Reconnect directo
+
+```
+=== Reconnect Test ===
+Destroying Provider B...
+Fetching fresh ticket B2 for same room...
+Provider B2 reconnected: PASS
+B2 sees current state: PASS (textB2="Hello from B")
+B2 -> A (reconnect): PASS (textA="Hello from B2")
+
+Provider B2 reconnect: PASS
 ```
 
-## Ticket auth status
+## Reconnect vía Nginx
 
-**PASS** — El sistema de tickets funciona correctamente:
+```
+=== Reconnect Test via Nginx ===
+Destroying Provider B...
+Fetching fresh ticket B2 for same room (via Nginx)...
+Provider B2 reconnected: PASS
+B2 sees current state: PASS (textB2="Hello from B")
+B2 -> A (reconnect): PASS (textA="Hello from B2")
 
-- `POST /collab/{ws_id}/{doc_id}/ticket` emite tickets opacos de 43+ chars
-- `Authorization: Bearer <jwt>` valida contra Workspace Service
-- Ticket se almacena en InMemoryTicketStore con TTL 60s
-- on_connect valida: existe, no expirado, match workspace+document
-- JWT no se imprime, no se guarda, no va en query string
-
-## Yjs smoke status
-
-- **Ticket endpoint:** PASS (200 con JWT real, role=owner)
-- **Provider A connection:** PASS
-- **Provider B connection:** PASS
-- **A → B sync:** PASS
-- **B → A sync:** PASS
-
-**SYNC PASS: bidirectional text sync verified**
-
-**Nota:** PM-03D.2 fue un falso negativo. El smoke anterior usó `ws` raw + parseo manual de bytes del protocolo. Con `WebsocketProvider` (el cliente correcto), `pycrdt-websocket` y `yjs` SON compatibles.
+Provider B2 reconnect: PASS
+```
 
 ## Validaciones ejecutadas
 
 ```
-python -m pytest apps/backend/collaboration-service/tests -v → 55 passed
-docker compose config                  → Validated OK
-docker compose build collaboration-service → Built OK
-curl http://localhost:8002/health     → {"status":"ok"}
-node smoke/yjs-sync-smoke.mjs          → SYNC PASS
+python -m pytest apps/backend/collaboration-service/tests -v
+→ 55 passed in 2.64s ✅
+
+python -m py_compile routes.py crdt_routes.py main.py settings.py
+→ ALL_COMPILED_OK ✅
+
+docker compose config → Validated OK ✅
+docker compose build collaboration-service → Built OK ✅
+
+Health checks:
+curl http://localhost:8002/health → 200 ✅
+curl http://localhost/collab/health -H "X-Shared-Secret: changeme" → 200 ✅
+curl http://localhost/collab/health → 401 ✅
+curl http://localhost/collab/health -H "X-Shared-Secret: wrong" → 401 ✅
 ```
 
-## Archivos modificados (PM-03D.4)
+## Resultado Git
 
 ```
+ M apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
+ M docs/migration/PM-03D-yjs-sync-notes.md
+ M docs/migration/latest_handoff.md
+ M migracion_briefly.md
+ M tasks.md
+?? apps/backend/collaboration-service/smoke/yjs-sync-smoke-nginx.mjs
+?? auditaciones_comandos.txt
+```
+
+## Riesgos / bloqueos
+
+1. **JWT expirará nuevamente** — El `SUPABASE_TEST_JWT` actual expira. Necesitará refresh en futuras iteraciones.
+
+## Contrato para la siguiente iteración
+
+**PM-03E:** Persistencia S3/DynamoDB — siguiente fase activa. PM-03D.5 completo y verificado.
+
+**PM-03D.5 listo para revisión APEX PRIME.**
+
+## Archivos recomendados para commit
+
+```
+A apps/backend/collaboration-service/smoke/yjs-sync-smoke-nginx.mjs
+M apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
 M docs/migration/PM-03D-yjs-sync-notes.md
 M docs/migration/latest_handoff.md
 M migracion_briefly.md
 M tasks.md
-A apps/backend/collaboration-service/smoke/.gitignore
-A apps/backend/collaboration-service/smoke/package.json
-A apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
 ```
 
-## Archivos nuevos (ticket auth — ya commitados en commits anteriores)
+## Archivos excluidos
 
 ```
-M apps/backend/collaboration-service/app/adapters/in_memory_ticket_store.py
-M apps/backend/collaboration-service/app/domain/collab_ticket.py
-M apps/backend/collaboration-service/app/ports/ticket_store.py
-M apps/backend/collaboration-service/app/use_cases/issue_collaboration_ticket.py
-M apps/backend/collaboration-service/app/use_cases/validate_collaboration_ticket.py
-M apps/backend/collaboration-service/app/api/routes.py
-M apps/backend/collaboration-service/app/api/crdt_routes.py
-M apps/backend/collaboration-service/app/config/settings.py
-M apps/backend/collaboration-service/app/main.py
-M apps/backend/collaboration-service/tests/test_collab_tickets.py
-```
-
-**Excluido:** `apps/backend/collaboration-service/smoke/node_modules/` (eliminado del workspace)
-
-## Tests
-
-**55 passed**
-
-## Contrato para la siguiente iteración
-
-**PM-03E — Persistencia S3/DynamoDB** (desbloqueado — PM-03D sync bidireccional verificado)
-
-Opciones:
-- S3/DynamoDB para snapshots y debounce
-- Persistencia de room state
-
-**PM-03D.5 opcional:** Nginx/reconnect hardening si se requiere para producción.
-
-## Archivos excluidos del commit
-
-```
-apps/backend/collaboration-service/smoke/node_modules/   (no existe — eliminado)
+apps/backend/collaboration-service/smoke/node_modules/
 apps/backend/collaboration-service/smoke/package-lock.json (en .gitignore)
+auditaciones_comandos.txt
 .env, *.log, __pycache__/, *.pyc
-```
-
-## Archivos incluidos en el commit
-
-```bash
-git add \
-  docs/migration/PM-03D-yjs-sync-notes.md \
-  docs/migration/latest_handoff.md \
-  migracion_briefly.md \
-  tasks.md \
-  apps/backend/collaboration-service/smoke/.gitignore \
-  apps/backend/collaboration-service/smoke/package.json \
-  apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
 ```

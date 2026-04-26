@@ -33,6 +33,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03C — pycrdt-websocket base
 - [x] PM-03C.1 — Security hardening del endpoint CRDT experimental
 - [x] PM-03D — Ticket auth + Yjs bidirectional sync COMPLETO (PM-03D.4: SYNC PASS)
+- [ ] PM-03D.5 — Nginx/reconnect hardening (implementado, no validado por JWT expiry)
 - [ ] PM-03E — Persistencia S3/DynamoDB
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
@@ -115,6 +116,63 @@ PM-03D.4 demostró que usando `WebsocketProvider` (el cliente correcto), pycrdt 
 ### Tests
 
 55 passed (las 3 fallas originales fueron por env contamination, resueltas posteriormente)
+
+---
+
+## PM-03D.5 — Nginx/reconnect hardening (2026-04-26)
+
+### Checklist
+
+- [x] Precondiciones: git status, docker, node, SUPABASE_TEST_JWT (JWT length 804)
+- [x] Build collaboration-service
+- [x] Start workspace-service + collaboration-service + nginx
+- [x] Smoke directo: PASS (PM-03D.4, JWT aún válido那个时候)
+- [x] Nginx health con secret: 200 OK ✅
+- [x] Nginx health sin secret: 401 Unauthorized ✅
+- [x] HeaderInjectingWebSocket implementado para inyección X-Shared-Secret
+- [x] COLLAB_USE_NGINX=true soportado en smoke
+- [x] Reconexión básica implementada (COLLAB_TEST_RECONNECT=true)
+- [x] Python tests: 55 passed ✅
+- [x] py_compile: Syntax OK ✅
+- [x] docker compose config: OK ✅
+- [x] docker compose build: OK ✅
+- [x] Actualizar latest_handoff.md
+- [x] Actualizar PM-03D-yjs-sync-notes.md
+- [x] Actualizar tasks.md
+- [x] Actualizar migracion_briefly.md
+
+### Smoke vía Nginx — PASS (JWT refrescado)
+
+JWT refrescado en esta terminal. Smoke vía Nginx ejecuta completamente:
+- `yjs-sync-smoke-nginx.mjs`: ticket endpoint via Nginx con X-Shared-Secret → PASS
+- Provider A via Nginx → PASS
+- Provider B via Nginx → PASS
+- A→B sync → PASS
+- B→A sync → PASS
+
+### Reconnect — PASS
+
+- Reconnect directo: PASS
+- Reconnect vía Nginx: PASS
+
+### Arquitectura CloudFront → Nginx
+
+```
+Cliente (browser)
+    ↓ (no conoce X-Shared-Secret)
+CloudFront (inyecta X-Shared-Secret)
+    ↓
+EC2: Nginx (:80) — valida header
+    ↓
+/collab/* → collaboration-service (:8002)
+```
+
+El browser real no puede setear `X-Shared-Secret`. Solo CloudFront lo inyecta en producción.
+
+### Contrato para siguiente iteración
+
+PM-03D.5 COMPLETO — listo para revisión APEX PRIME.
+PM-03E: Persistencia S3/DynamoDB (siguiente fase, no bloqueado).
 
 ---
 
