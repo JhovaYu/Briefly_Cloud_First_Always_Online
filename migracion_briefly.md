@@ -1436,7 +1436,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26), PM-03E.4B ✅ (2026-04-26) |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26), PM-03E.4B ✅ (2026-04-26), PM-03E.5A ✅ (2026-04-26) |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1772,6 +1772,43 @@ bjwt && node smoke/yjs-persistence-smoke.mjs
 - main.py branch S3 no afecta memory/local/disabled
 - 130 tests siguen passando
 - Docker build OK
+
+---
+
+## PM-03E.5A — Safe Docker S3 env wiring (2026-04-26) ✅
+
+### Problema resuelto
+
+Preparar Docker Compose para permitir `DOCUMENT_STORE_TYPE=s3` via `.env.s3` gitignored, sin tocar AWS real.
+
+### Cambios aplicados
+
+**docker-compose.yml:** `DOCUMENT_STORE_TYPE` e `AWS_*` ahora son interpolables via env vars.
+
+Default sigue siendo `DOCUMENT_STORE_TYPE=local`.
+
+**.env.example:** Agregada documentacion de `.env.s3` con ejemplo de uso.
+
+**.gitignore:** Ya cubre `.env.*` — sin cambio requerido.
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| docker compose config | ✅ Validated |
+| docker compose build collaboration-service | ✅ Built OK |
+| pytest 130 tests | ✅ PASS |
+
+### Garantías
+
+- `DOCUMENT_STORE_TYPE=local` sigue siendo default
+- `.env.s3` cubierto por `.gitignore`
+- No se toca AWS real
+- No se usan credenciales reales
+
+### Siguiente paso
+
+PM-03E.5B: AWS Academy bucket + real S3 smoke (requiere credenciales Academy)
 
 ---
 

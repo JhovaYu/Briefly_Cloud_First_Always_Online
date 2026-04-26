@@ -366,3 +366,59 @@ bjwt && node smoke/yjs-persistence-smoke.mjs
 - main.py branch S3 no afecta memory/local/disabled
 - 130 tests siguen passando
 - Docker build OK
+
+---
+
+## PM-03E.5A — Safe Docker S3 env wiring (2026-04-26) ✅
+
+### Problema resuelto
+
+Preparar Docker Compose para permitir `DOCUMENT_STORE_TYPE=s3` via `.env.s3` gitignored, sin tocar AWS real.
+
+### Cambios aplicados
+
+**docker-compose.yml:**
+```yaml
+- DOCUMENT_STORE_TYPE=${DOCUMENT_STORE_TYPE:-local}
+- DOCUMENT_STORE_PATH=${DOCUMENT_STORE_PATH:-/data/collab-snapshots}
+- DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=${DOCUMENT_PERIODIC_SNAPSHOT_ENABLED:-true}
+- DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=${DOCUMENT_SNAPSHOT_INTERVAL_SECONDS:-30}
+- DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=${DOCUMENT_EMPTY_ROOM_GRACE_SECONDS:-5}
+- MAX_SNAPSHOT_BYTES=${MAX_SNAPSHOT_BYTES:-52428800}
+- AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-}
+- AWS_REGION=${AWS_REGION:-us-east-1}
+- AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+- AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+- AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+- AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+```
+
+Default sin override sigue siendo `DOCUMENT_STORE_TYPE=local`.
+
+**.env.example:** Agregada documentacion de `.env.s3` con ejemplo.
+
+**.gitignore:** Ya cubre `.env.*` — sin cambio requerido.
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| docker compose config | ✅ Validated |
+| docker compose build collaboration-service | ✅ Built OK |
+| pytest 130 tests | ✅ PASS |
+
+### Garantías
+
+- `DOCUMENT_STORE_TYPE=local` sigue siendo default
+- `.env.s3` cubierto por `.gitignore`
+- No se toca AWS real
+- No se usan credenciales reales
+
+### Criterios de Aceptación Cumplidos
+
+- ✅ docker-compose.yml permite override a `DOCUMENT_STORE_TYPE=s3`
+- ✅ Default sin `.env.s3` sigue siendo `local`
+- ✅ `AWS_*` disponibles como env vars interpolables
+- ✅ `.env.s3` cubierto por `.gitignore`
+- ✅ `.env.example` documenta el uso sin secretos
+- ✅ Tests pasan, Docker build OK

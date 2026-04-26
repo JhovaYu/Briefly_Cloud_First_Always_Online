@@ -1,118 +1,125 @@
 # Latest Handoff
 
 ## Fase
-PM-03E.4B (2026-04-26) — Docker/local config no-regression after S3DocumentStore
+PM-03E.5A (2026-04-26) — Safe Docker S3 env wiring
 
 ## Contexto previo relevante
 
+- **PM-03E.4B:** Docker/local config no-regression — 130 tests PASS, Docker build OK
 - **PM-03E.4A:** S3DocumentStore adapter with moto mocked tests — 130 tests PASS
 - **PM-03E.3:** Docker local volume + runtime persistence smoke — PASS con JWT fresco
-- **PM-03E.2:** Periodic snapshot timer + debounce — 117 tests PASS
 
 ## Objetivo ejecutado
 
-Validar que PM-03E.4A no rompió el modo local Docker.
+Preparar Docker Compose para permitir `DOCUMENT_STORE_TYPE=s3` usando `.env.s3` gitignored, sin tocar AWS real.
 
-## Validaciones Python
+## Cambios aplicados en PM-03E.5A
 
+### docker-compose.yml
+
+`DOCUMENT_STORE_TYPE` e `AWS_*` ahora son interpolables via env vars:
+
+```yaml
+- DOCUMENT_STORE_TYPE=${DOCUMENT_STORE_TYPE:-local}
+- DOCUMENT_STORE_PATH=${DOCUMENT_STORE_PATH:-/data/collab-snapshots}
+- DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=${DOCUMENT_PERIODIC_SNAPSHOT_ENABLED:-true}
+- DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=${DOCUMENT_SNAPSHOT_INTERVAL_SECONDS:-30}
+- DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=${DOCUMENT_EMPTY_ROOM_GRACE_SECONDS:-5}
+- MAX_SNAPSHOT_BYTES=${MAX_SNAPSHOT_BYTES:-52428800}
+- AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-}
+- AWS_REGION=${AWS_REGION:-us-east-1}
+- AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+- AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+- AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+- AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
 ```
-✅ python -m pytest apps/backend/collaboration-service/tests -v → 130 passed in 6.74s
-  - test_document_store.py: 19 tests (InMemory + LocalFile)
-  - test_periodic_snapshot.py: 18 tests
-  - test_ws_crdt.py: 16 tests
-  - test_ws_auth.py: 19 tests
-  - test_collab_tickets.py: 19 tests
-  - test_ws_echo.py: 6 tests
-  - test_s3_document_store.py: 13 tests (moto mocked)
 
-✅ python -m py_compile app/adapters/s3_document_store.py → OK
-✅ python -m py_compile app/adapters/local_file_document_store.py → OK
-✅ python -m py_compile app/config/settings.py → OK
-✅ python -m py_compile app/main.py → OK
+Default sin override sigue siendo `DOCUMENT_STORE_TYPE=local`.
+
+### .env.example
+
+Agregada documentacion de `.env.s3`:
+
+```bash
+# For AWS Academy / local S3 smoke, create a local untracked .env.s3 file.
+# Example .env.s3 content (DO NOT COMMIT):
+#   DOCUMENT_STORE_TYPE=s3
+#   AWS_S3_BUCKET_NAME=briefly-cloud-first-collab-snapshots-dev
+#   AWS_REGION=us-east-1
+#   AWS_ENDPOINT_URL=
+#   AWS_ACCESS_KEY_ID=<temp key>
+#   AWS_SECRET_ACCESS_KEY=<temp secret>
+#   AWS_SESSION_TOKEN=<temp token>
+#
+# Run with: docker compose --env-file .env.s3 up -d collaboration-service
 ```
 
-## Validaciones Docker local
+### .gitignore
+
+Ya cubre `.env.*` (no se requiere cambio).
+
+## Validaciones ejecutadas
 
 ```
 ✅ docker compose config → Validated
 ✅ docker compose build collaboration-service → Built OK
-✅ docker compose up -d workspace-service collaboration-service nginx → Containers up
-
-✅ Container env vars (collaboration-service):
-   DOCUMENT_STORE_TYPE=local
-   DOCUMENT_STORE_PATH=/data/collab-snapshots
-   DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
-
-✅ Health checks:
-   Direct to 8002: 200 OK
-   Via nginx + X-Shared-Secret: 200 OK
-   Via nginx without secret: 401 Unauthorized
-```
-
-## Runtime smoke result
-
-**SKIPPED: JWT expired**
-
-Smoke test falla en workspace creation (401) — JWT expirado, no relacionado con DOCUMENT_STORE_TYPE.
-
-Comando manual cuando JWT fresco esté disponible:
-```bash
-bjwt
-node smoke/yjs-persistence-smoke.mjs
+✅ python -m pytest apps/backend/collaboration-service/tests → 130 passed
 ```
 
 ## Garantías actuales
 
-- `DOCUMENT_STORE_TYPE=local` funciona en Docker con PM-03E.4A
-- Named volume `collab-snapshots` montado en `/data/collab-snapshots`
-- `DOCUMENT_STORE_TYPE=s3` solo se activa cuando está configurado explicitly
-- `AWS_S3_BUCKET_NAME` no es requerido cuando `DOCUMENT_STORE_TYPE=local`
-- main.py branch S3 no afecta memory, local ni disabled
-- 130 tests siguen pasando
-- Docker build OK
+- `DOCUMENT_STORE_TYPE=local` sigue siendo default en Docker
+- `.env.s3` queda cubierto por `.gitignore` (`.env.*`)
+- `AWS_*` vars disponibles como env var interpolation para container
+- No se toca AWS real
+- No se usan credenciales reales
+- No se crea bucket
 
 ## Qué NO garantiza todavía
 
-- Smoke persistence local E2E (JWT expirado — pendiente refresh manual)
-- AWS real (PM-03E.5 — requiere approval separate)
+- Smoke real contra AWS Academy (PM-03E.5B)
+- Bucket real creado
+- Credenciales AWS Academy configuradas
 
 ## Resultado Git
 
 ```
- M docs/migration/PM-03E-persistence-design.md
- M docs/migration/latest_handoff.md
- M migracion_briefly.md
- M tasks.md
+ M .env.example
+ M docker-compose.yml
 ```
 
-**Nota:** Archivos de codigo de PM-03E.4A ya commiteados en `4300e53`.
+**Nota:** Archivos de docs de PM-03E.4A/B ya commiteados.
 
 ## Riesgos restantes
 
-1. **Smoke local E2E** — Saltó por JWT expiry, no por código. Precisa refresh manual.
-2. **IAM/AWS real** — Pendiente PM-03E.5 (requiere approval separate)
-3. **No DynamoDB** — S3-only
+1. `.env.s3` con credenciales reales commiteado accidentalmente — mitigado por `.gitignore`
+2. AWS Academy credentials expiran — MGMT: refresh antes de demo
+3. Bucket name collision — usar sufijo `-dev`
 
 ## Contrato para siguiente iteración
 
-**PM-03E.5: AWS real wiring** (requiere approval separate + AWS Academy credentials)
+**PM-03E.5B — AWS Academy bucket + real S3 smoke**
 
-- Crear bucket S3 en AWS Academy Learner Lab
-- Configurar IAM role o credentials
-- Probar con `SUPABASE_TEST_JWT` fresco (smoke E2E real)
+Requiere:
+- AWS Academy Learner Lab activo
+- Credenciales temporales disponibles
+- Bucket `briefly-cloud-first-collab-snapshots-dev` creado con Block Public Access ON
+- IAM policy aplicada
+- JWT fresco (`bjwt`)
+- Approval APEX PRIME
 
 ## Archivos recomendados para commit
 
 ```
-M docs/migration/latest_handoff.md
-M docs/migration/PM-03E-persistence-design.md
-M migracion_briefly.md
-M tasks.md
+M .env.example
+M docker-compose.yml
 ```
 
 ## Archivos excluidos
 
 ```
+.env.s3
+.env.local
 auditaciones_comandos.txt
 .env, *.log, __pycache__/, *.pyc, node_modules/
 .claude/
@@ -122,4 +129,4 @@ apps/backend/collaboration-service/smoke/node_modules/
 apps/backend/collaboration-service/smoke/package-lock.json
 ```
 
-**PM-03E.4B listo para revisión APEX.**
+**PM-03E.5A listo para revisión APEX.**

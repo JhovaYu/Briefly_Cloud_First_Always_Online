@@ -40,6 +40,9 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03E.3 — Docker local volume + runtime persistence smoke (2026-04-26)
 - [x] PM-03E.4A — S3DocumentStore adapter with moto mocked tests (2026-04-26)
 - [x] PM-03E.4B — Docker/local config no-regression validation (2026-04-26)
+- [x] PM-03E.5A — Safe Docker S3 env wiring (2026-04-26)
+- [ ] PM-03E.5B — AWS Academy bucket + real S3 smoke
+- [ ] PM-03E.5C — Cleanup/docs
 - [ ] PM-03E — Persistencia S3
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
