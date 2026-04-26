@@ -37,6 +37,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03E.1.1 — Local CRDT persistence lifecycle hardening (2026-04-26)
 - [x] PM-03E.1.2 — Snapshot restore integration fix (2026-04-26)
 - [x] PM-03E.2 — Periodic timer/debounce (2026-04-26)
+- [x] PM-03E.3 — Docker local volume + runtime persistence smoke (2026-04-26)
 - [ ] PM-03E — Persistencia S3/DynamoDB
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility

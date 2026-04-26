@@ -1436,7 +1436,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26) |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26) |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1630,6 +1630,66 @@ Esto asegura que cuando pycrdt hace `get_room()` internamente, la room YA está 
 
 ### Contrato para siguiente iteración:
 - PM-03E.2 COMPLETO — listo para revisión APEX
+- PM-03E.3: Docker local volume + runtime persistence smoke
+- PM-03E: Persistencia S3/DynamoDB (fase posterior — no bloqueado)
+
+---
+
+## PM-03E.3 — Docker local volume + runtime persistence smoke (2026-04-26) ✅
+
+### Problema resuelto
+
+`DOCUMENT_STORE_TYPE=local` en Docker sin volumen montado pierde snapshots en cada restart del contenedor.
+
+### Solución implementada
+
+1. **Named volume** `collab-snapshots` montado en `/data/collab-snapshots`
+2. **`collaboration-service`** recibe env vars: `DOCUMENT_STORE_TYPE=local`, `DOCUMENT_STORE_PATH=/data/collab-snapshots`, `DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true`
+3. **Smoke test dedicado** `yjs-persistence-smoke.mjs` para validación E2E cross-container-restart
+4. **`.gitignore`** excluye `.data/` y `*.bin`
+
+### docker-compose.yml changes
+
+```yaml
+services:
+  collaboration-service:
+    volumes:
+      - collab-snapshots:/data/collab-snapshots
+    environment:
+      - DOCUMENT_STORE_TYPE=local
+      - DOCUMENT_STORE_PATH=/data/collab-snapshots
+      - DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
+      - DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=30
+      - DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=5
+
+volumes:
+  collab-snapshots:
+```
+
+### Validaciones ejecutadas
+
+```
+✅ docker compose config → Validated
+✅ docker compose build collaboration-service → Built OK
+✅ docker compose up -d --no-deps collaboration-service → Volume created, service started
+✅ Container env: DOCUMENT_STORE_TYPE=local, DOCUMENT_STORE_PATH=/data/collab-snapshots, DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
+✅ node --check yjs-persistence-smoke.mjs → OK
+✅ python -m pytest apps/backend/collaboration-service/tests -v → 117 passed
+```
+
+### Runtime smoke: SKIPPED
+
+Requiere `SUPABASE_TEST_JWT` fresco.
+
+Comando manual:
+```bash
+cd apps/backend/collaboration-service/smoke
+npm install
+SUPABASE_TEST_JWT=<tu_jwt> node yjs-persistence-smoke.mjs
+```
+
+### Contrato para siguiente iteración:
+- PM-03E.3 COMPLETO — listo para revisión APEX
 - PM-03E: Persistencia S3/DynamoDB (fase posterior — no bloqueado)
 
 ---

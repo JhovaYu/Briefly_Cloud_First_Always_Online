@@ -1,137 +1,123 @@
 # Latest Handoff
 
 ## Fase
-PM-03E.2 (2026-04-26) — Periodic snapshot timer + debounce
+PM-03E.3 (2026-04-26) — Docker local volume + runtime persistence smoke
 
 ## Contexto previo relevante
 
-- **PM-03A:** WebSocket echo endpoint `/collab/echo`
-- **PM-03B:** First-message auth estable en `/collab/{ws_id}/{doc_id}`
-- **PM-03C:** pycrdt-websocket base experimental con feature flag
-- **PM-03D:** Ticket auth + Yjs bidirectional sync verificado
-- **PM-03D.5:** Nginx/reconnect hardening — PASS
+- **PM-03E.2:** Periodic snapshot timer + debounce — 117 tests PASS
 - **PM-03E.1:** Local CRDT snapshot persistence foundation
 - **PM-03E.1.1:** on_disconnect wireado, lifecycle hardening
-- **PM-03E.1.2:** Snapshot restore integration fix (documentación corregida)
+- **PM-03E.1.2:** Snapshot restore integration fix
 
-## Cambios aplicados en PM-03E.2
+## Cambios aplicados en PM-03E.3
 
 ### Problema resuelto
 
-**"Room orphan sin disconnect"**: cliente hace crash sin enviar disconnect → room queda huérfana en `server.rooms` con `clients == set` → cambios no guardados hasta shutdown.
+`DOCUMENT_STORE_TYPE=local` en Docker sin volumen montado pierde snapshots en cada restart del contenedor.
 
 ### Solución implementada
 
-1. **Dirty tracking**: `doc.observe()` callback marca room como dirty cuando hay cambios sin guardar
-2. **Periodic snapshot task**: tarea background cada 30s escanea rooms, persiste las dirty
-3. **Orphan cleanup**: rooms vacías pasadas grace period (5s) son guardadas y removidas
-4. **Active room preservation**: rooms con clientes activos NO se remueven aunque estén vacías de snapshot
+1. **Docker named volume** `collab-snapshots` montado en `/data/collab-snapshots` dentro del contenedor
+2. **`collaboration-service`** recibe env vars `DOCUMENT_STORE_TYPE=local`, `DOCUMENT_STORE_PATH=/data/collab-snapshots`, `DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true`
+3. **Periodic snapshot** habilitado por defecto en Docker (intervalo 30s, grace 5s)
+4. **Smoke test dedicado** `yjs-persistence-smoke.mjs` para validar persistencia cross-container-restart
+5. **`.gitignore`** actualizado para excluir `.data/` y `*.bin`
 
-### Fields añadidos a PycrdtRoomManager
+## Docker persistence design
 
-```python
-_room_dirty: dict[str, bool]           # dirty flag por room
-_room_empty_since: dict[str, float]     # timestamp cuando quedó vacía
-_periodic_task: asyncio.Task | None    # handle de tarea background
-_periodic_enabled: bool                 # flag de habilitación
-_snapshot_interval: float = 30.0       # intervalo entre snapshots
-_empty_room_grace: float = 5.0         # grace period para rooms huérfanas
-_doc_subscriptions: dict[str, object]   # observers de pycrdt
+### Volume configuration
+
+```yaml
+# docker-compose.yml
+volumes:
+  collab-snapshots:   # named volume, persists across container recreate
+
+services:
+  collaboration-service:
+    volumes:
+      - collab-snapshots:/data/collab-snapshots
+    environment:
+      - DOCUMENT_STORE_TYPE=local
+      - DOCUMENT_STORE_PATH=/data/collab-snapshots
+      - DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
+      - DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=30
+      - DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=5
 ```
 
-### Methods añadidos
+### Trade-off: named volume vs bind mount
 
-| Method | Función |
-|---|---|
-| `_mark_dirty(room_key)` | Marca room como dirty |
-| `_mark_clean(room_key)` | Marca room como clean |
-| `_is_dirty(room_key)` | Consulta dirty flag |
-| `_setup_doc_observer(room_key, ydoc)` | Attaches `doc.observe()` callback |
-| `start_periodic_snapshot_task()` | Inicia tarea periódica (idempotente) |
-| `stop_periodic_snapshot_task()` | Detiene tarea periódica |
-| `run_periodic_snapshot_once()` | Una iteración del snapshot (testeable) |
-| `_periodic_snapshot_loop()` | Loop background con sleep |
+| Opción | Ventaja | Desventaja |
+|---|---|---|
+| **Named volume** (elegida) | Gestionado por Docker, survives recreate | Menos visible en host |
+| **Bind mount** | Visible en host filesystem | Requiere path absoluto, menos portable |
 
-### Settings añadidos
+Named volume es la elección correcta para demo — el snapshot sobrevive a recreate sin exponer archivos en el host.
 
-```python
-DOCUMENT_SNAPSHOT_INTERVAL_SECONDS: float = 30.0    # intervalo timer
-DOCUMENT_EMPTY_ROOM_GRACE_SECONDS: float = 5.0       # grace para orphan
-DOCUMENT_PERIODIC_SNAPSHOT_ENABLED: bool = False     # feature flag
+### Snapshot path inside container
+
+`/data/collab-snapshots/{workspace_id}/{document_id}/latest.bin`
+
+### What's NOT in Git
+
+```
+.data/            ← gitignored (local dev bind mount / Docker volume contents)
+*.bin            ← gitignored (snapshot binaries)
 ```
 
-## Snapshot Lifecycle (actualizado PM-03E.2)
+## Runtime smoke result
 
-| Evento | ¿Snapshot guardado? |
-|---|---|
-| Room creada en on_connect | **SÍ — snapshot cargado via `_ensure_room()`** |
-| Último cliente disconnect | **SÍ — vía `handle_disconnect()`** |
-| **Orphan (crash sin disconnect)** | **SÍ — vía periodic timer tras grace period** |
-| Room con clientes activos + dirty | **SÍ — vía periodic timer (no se remueve)** |
-| Service shutdown | **SÍ — lifespan shutdown itera `server.rooms`** |
-| `close_room()` manual | **SÍ — save+delete** |
+**SKIPPED: requires fresh SUPABASE_TEST_JWT**
 
-## Garantías actuales
+Comando para ejecutar manualmente:
 
-- Dirty rooms con clientes activos son persistidas periódicamente sin ser removidas
-- Rooms huérfanas (vacías por crash) son detectadas tras grace period y removidas tras snapshot
-- Rooms con todos los clientes desconectados (disconnect normal) son guardadas antes de cleanup
-- Snapshot máximo 50 MB — oversized son skippeados
-- Escritura atómica (latest.tmp → rename)
-- No S3/DynamoDB/boto3
+```bash
+cd apps/backend/collaboration-service/smoke
+npm install
+SUPABASE_TEST_JWT=<tu_jwt> node yjs-persistence-smoke.mjs
+```
 
-## Qué NO garantiza todavía
-
-- S3/DynamoDB persistence (fase PM-03E futura)
-- Reconnect automático sin pérdida de cambios (requiere cliente + server handshake)
-- `DOCUMENT_STORE_TYPE=local` en Docker sin bind mount pierde snapshots en restart
+Smoke flow:
+1. Provider A connect → write "Persistence Test A" → disconnect cleanly
+2. Wait 5s for snapshot to persist to volume
+3. Provider B connect with fresh doc → verify sees "Persistence Test A" from snapshot
 
 ## Tests ejecutados
 
 ```
 python -m pytest apps/backend/collaboration-service/tests -v
-→ 117 passed in 2.62s ✅
-  - test_document_store.py: 19 tests
-  - test_room_lifecycle.py: 14 tests
-  - test_snapshot_restore.py: 11 tests
-  - test_ws_crdt.py: 15 tests
-  - test_ws_auth.py: 15 tests
-  - test_collab_tickets.py: 19 tests
-  - test_ws_echo.py: 6 tests
-  - test_periodic_snapshot.py: 18 tests (NEW in PM-03E.2)
+→ 117 passed in 2.66s ✅
 ```
 
-**Periodic snapshot tests cubren:**
-- Dirty tracking: `_mark_dirty`, `_mark_clean`, `_is_dirty`
-- Periodic save: dirty room saved, clean room not rewritten, oversized skipped
-- Orphan cleanup: empty beyond grace → saved+removed; empty within grace → kept
-- Active room preservation: room with clients NOT removed even if dirty
-- Task lifecycle: idempotent start, stop cancels task, stop without start no error
-- Doc observer: `_ensure_room` sets up observer, loaded room starts clean
+No new tests added — PM-03E.3 es configuración Docker + smoke E2E, no cambios de código Python.
 
 ## Validaciones ejecutadas
 
 ```
-✅ python -m pytest apps/backend/collaboration-service/tests -v → 117 passed
-✅ python -m py_compile pycrdt_room_manager.py → OK
-✅ python -m py_compile settings.py → OK
-✅ python -m py_compile main.py → OK
 ✅ docker compose config → Validated
 ✅ docker compose build collaboration-service → Built OK
+✅ docker compose up -d --no-deps collaboration-service → Volume created, service started
+✅ docker compose logs collaboration-service → Uvicorn running
+✅ Container env: DOCUMENT_STORE_TYPE=local ✅
+✅ Container env: DOCUMENT_STORE_PATH=/data/collab-snapshots ✅
+✅ Container env: DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true ✅
+✅ node --check yjs-persistence-smoke.mjs → OK (no syntax errors)
 ```
 
 ## Resultado Git
 
 ```
-M apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
-M apps/backend/collaboration-service/app/config/settings.py
-M apps/backend/collaboration-service/app/main.py
-M apps/backend/collaboration-service/tests/test_periodic_snapshot.py
-M docs/migration/PM-03E-persistence-design.md
-M docs/migration/latest_handoff.md
-M migracion_briefly.md
-M tasks.md
+M docker-compose.yml
+M .gitignore
+A apps/backend/collaboration-service/smoke/yjs-persistence-smoke.mjs
 ```
+
+## Riesgos restantes
+
+1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Suficiente para PM-03E.1.x.
+2. **No S3/DynamoDB** — fase posterior PM-03E.
+3. **`DOCUMENT_STORE_TYPE=local` en EC2 sin volume** — snapshots se pierden en restart del contenedor si no hay volumen EBS o bind mount.
+4. **Runtime smoke E2E** — no ejecutado por falta de JWT fresco (documentado como SKIPPED).
 
 ## Contrato para la siguiente iteración
 
@@ -142,15 +128,14 @@ M tasks.md
 - No modificar interface `RoomManager`
 - No romper tests existentes
 
-**PM-03E.2 listo para revisión APEX.**
+**PM-03E.3 listo para revisión APEX.**
 
 ## Archivos recomendados para commit
 
 ```
-M apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
-M apps/backend/collaboration-service/app/config/settings.py
-M apps/backend/collaboration-service/app/main.py
-A apps/backend/collaboration-service/tests/test_periodic_snapshot.py
+M docker-compose.yml
+M .gitignore
+A apps/backend/collaboration-service/smoke/yjs-persistence-smoke.mjs
 M docs/migration/latest_handoff.md          ← post-update
 M docs/migration/PM-03E-persistence-design.md  ← post-update
 M migracion_briefly.md                    ← post-update
@@ -163,10 +148,6 @@ M tasks.md                                ← post-update
 auditaciones_comandos.txt
 .env, *.log, __pycache__/, *.pyc, node_modules/
 .claude/
+.data/
+*.bin
 ```
-
-## Riesgos restantes
-
-1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Suficiente para PM-03E.1.x.
-2. **`DOCUMENT_STORE_TYPE=local` en Docker** — Sin bind mount, snapshots se pierden en restart.
-3. **No S3/DynamoDB** — fase posterior.

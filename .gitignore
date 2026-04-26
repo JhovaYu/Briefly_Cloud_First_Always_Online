@@ -9,6 +9,10 @@ release
 .env.*
 !.env.example
 
+# Local CRDT snapshots (Docker volume bind mount)
+.data/
+*.bin
+
 # Python
 __pycache__/
 *.py[cod]

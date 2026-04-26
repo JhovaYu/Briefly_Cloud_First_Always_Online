@@ -40,6 +40,14 @@ services:
       - SHARED_SECRET=${SHARED_SECRET:-changeme}
       - ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=${ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:-false}
       - TICKET_TTL_SECONDS=${TICKET_TTL_SECONDS:-60}
+      - DOCUMENT_STORE_TYPE=local
+      - DOCUMENT_STORE_PATH=/data/collab-snapshots
+      - DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=${DOCUMENT_PERIODIC_SNAPSHOT_ENABLED:-true}
+      - DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=${DOCUMENT_SNAPSHOT_INTERVAL_SECONDS:-30}
+      - DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=${DOCUMENT_EMPTY_ROOM_GRACE_SECONDS:-5}
+      - MAX_SNAPSHOT_BYTES=${MAX_SNAPSHOT_BYTES:-52428800}
+    volumes:
+      - collab-snapshots:/data/collab-snapshots
     mem_limit: 384m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
@@ -144,3 +152,6 @@ services:
 networks:
   briefly-internal:
     driver: bridge
+
+volumes:
+  collab-snapshots:

@@ -205,3 +205,76 @@ auditaciones_comandos.txt
 - ✅ No S3/DynamoDB/boto3
 - ✅ NO commit/push realizado
 - ✅ Documentación actualizada a PM-03E.2
+
+---
+
+## PM-03E.3 — Docker Local Volume + Runtime Persistence Smoke (2026-04-26) ✅
+
+### Problema resuelto
+
+`DOCUMENT_STORE_TYPE=local` en Docker sin volumen montado pierde snapshots en cada restart del contenedor.
+
+### Solución implementada
+
+1. **Named volume** `collab-snapshots` montado en `/data/collab-snapshots`
+2. **`collaboration-service`** recibe env vars: `DOCUMENT_STORE_TYPE=local`, `DOCUMENT_STORE_PATH=/data/collab-snapshots`, `DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true`
+3. **Smoke test dedicado** `yjs-persistence-smoke.mjs` para validación E2E
+4. **`.gitignore`** excluye `.data/` y `*.bin`
+
+### docker-compose.yml changes
+
+```yaml
+services:
+  collaboration-service:
+    volumes:
+      - collab-snapshots:/data/collab-snapshots
+    environment:
+      - DOCUMENT_STORE_TYPE=local
+      - DOCUMENT_STORE_PATH=/data/collab-snapshots
+      - DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
+      - DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=30
+      - DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=5
+
+volumes:
+  collab-snapshots:
+```
+
+### Validaciones
+
+```
+✅ docker compose config → Validated
+✅ docker compose build collaboration-service → Built OK
+✅ docker compose up -d collaboration-service → Volume created, service started
+✅ Container env verified: DOCUMENT_STORE_TYPE=local, DOCUMENT_STORE_PATH=/data/collab-snapshots, DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true
+✅ node --check yjs-persistence-smoke.mjs → OK
+✅ python -m pytest apps/backend/collaboration-service/tests -v → 117 passed
+```
+
+### Runtime smoke: SKIPPED
+
+Requiere `SUPABASE_TEST_JWT` fresco. Comando manual:
+
+```bash
+cd apps/backend/collaboration-service/smoke
+npm install
+SUPABASE_TEST_JWT=<tu_jwt> node yjs-persistence-smoke.mjs
+```
+
+### Trade-off: named volume vs bind mount
+
+| Opción | Ventaja | Desventaja |
+|---|---|---|
+| **Named volume** (elegida) | Gestionado por Docker, survives recreate | Menos visible en host |
+| **Bind mount** | Visible en host filesystem | Requiere path absoluto, menos portable |
+
+### Criterios de Aceptación Cumplidos
+
+- ✅ Named volume `collab-snapshots` montado en `/data/collab-snapshots`
+- ✅ `DOCUMENT_STORE_TYPE=local` configurado en Docker
+- ✅ `DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=true` en Docker
+- ✅ `.data/` y `*.bin` en `.gitignore`
+- ✅ `yjs-persistence-smoke.mjs` creado y sintácticamente válido
+- ✅ 117 tests passing
+- ✅ Docker build OK
+- ✅ NO commit/push realizado
+- ✅ Documentación actualizada a PM-03E.3
