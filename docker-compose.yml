@@ -38,6 +38,8 @@ services:
       - LOG_LEVEL=INFO
       - ENVIRONMENT=local
       - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=${ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:-false}
+      - TICKET_TTL_SECONDS=${TICKET_TTL_SECONDS:-60}
     mem_limit: 384m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]

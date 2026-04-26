@@ -107,18 +107,29 @@ class TestExperimentalEndpointGate:
 
     def test_setting_default_is_false(self):
         """Setting defaults to False (secure by default)."""
-        from app.config.settings import Settings
-        s = Settings()
-        assert s.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT is False
+        # Isolate from shell environment to avoid env pollution
+        with patch.dict("os.environ", {"ENABLE_EXPERIMENTAL_CRDT_ENDPOINT": ""}, clear=False):
+            # Clear the env var completely for this test
+            import os
+            os.environ.pop("ENABLE_EXPERIMENTAL_CRDT_ENDPOINT", None)
+            from app.config.settings import Settings
+            s = Settings()
+            assert s.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT is False
 
     def test_crdt_endpoint_not_mounted_by_default(self):
         """When ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false (default), /collab/crdt is NOT mounted."""
-        # Import app fresh to pick up current settings
-        from app.main import app
-        route_names = [r.name for r in app.routes]
-        # /collab/crdt should NOT be in routes when flag is False (default)
-        crdt_routes = [n for n in route_names if "crdt" in n.lower()]
-        assert len(crdt_routes) == 0, f"CRDT routes found when flag is False: {crdt_routes}"
+        # Isolate from shell environment to avoid env pollution
+        with patch.dict("os.environ", {"ENABLE_EXPERIMENTAL_CRDT_ENDPOINT": ""}, clear=False):
+            import os
+            os.environ.pop("ENABLE_EXPERIMENTAL_CRDT_ENDPOINT", None)
+            # Re-import app to get fresh routing with isolated settings
+            import importlib
+            import app.main
+            importlib.reload(app.main)
+            from app.main import app
+            route_names = [r.name for r in app.routes]
+            crdt_routes = [n for n in route_names if "crdt" in n.lower()]
+            assert len(crdt_routes) == 0, f"CRDT routes found when flag is False: {crdt_routes}"
 
     def test_crdt_endpoint_mounted_when_flag_true(self):
         """When ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true, /collab/crdt IS mounted."""

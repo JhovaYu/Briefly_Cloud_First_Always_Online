@@ -26,14 +26,15 @@ Este archivo es la bitácora auditable de ejecución.
 ## Estado actual resumido
 
 - [x] PM-01 — Foundation local backend
-- [x] PM-02A/B/C — Workspace Service completo y validado ✅ Commit pending
-- [x] PM-03A — Collaboration WebSocket echo + Nginx validation ✅ Commit pending
-- [x] PM-03B — Collaboration Auth handshake + Workspace permissions ✅ Commit pending
-- [x] PM-03B.1 — Auth test hardening (close codes + positive test) ✅ Commit pending
-- [x] PM-03C — pycrdt-websocket base ✅ Commit pending
-- [ ] PM-03C.1 — Security hardening del endpoint CRDT experimental
-- [ ] PM-03D — Yjs sync dos clientes con auth viable
-- [ ] PM-03E — Persistencia S3/DynamoDB + snapshots/debounce
+- [x] PM-02A/B/C — Workspace Service completo y validado
+- [x] PM-03A — Collaboration WebSocket echo + Nginx validation
+- [x] PM-03B — Collaboration Auth handshake + Workspace permissions
+- [x] PM-03B.1 — Auth test hardening (close codes + positive test)
+- [x] PM-03C — pycrdt-websocket base
+- [x] PM-03C.1 — Security hardening del endpoint CRDT experimental
+- [x] PM-03D — Ticket auth infrastructure (PARTIAL: ticket + WS connection work, Yjs sync BLOCKED by protocol incompatibility)
+- [ ] PM-03D.3 — Decision gate: estrategia realtime (pycrdt vs yjs vs alternativa)
+- [ ] PM-03E — Persistencia (BLOQUEADO hasta decisión realtime)
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
@@ -42,7 +43,91 @@ Este archivo es la bitácora auditable de ejecución.
 
 ---
 
-## PM-03C.1 — Security hardening endpoint CRDT experimental (2026-04-26)
+## PM-03D.1 — Yjs smoke real + cierre documental (2026-04-25)
+
+### Checklist
+
+- [x] Verificar Docker/Node/npm disponibles
+- [x] Instalar dependencias smoke: `npm install` en smoke/
+- [x] Corregir bug Authorization Header en ticket endpoint
+- [x] Ejecutar smoke Yjs real
+- [x] Verificar sistema de tickets soporta múltiples clientes
+- [x] Documentar resultado smoke en PM-03D-yjs-sync-notes.md
+- [x] Actualizar latest_handoff.md con secciones requeridas
+- [x] Actualizar tasks.md (quitar "Commit pending" desfasado)
+- [x] Actualizar migracion_briefly.md
+- [x] Tests passing: 55 passed
+
+### Smoke Yjs resultado
+
+```
+node yjs-sync-smoke.mjs
+→ ❌ Client A connection timeout
+
+Causa: Ticket hardcodeado "test-ticket-for-local-validation" no existe en store.
+El endpoint CRDT requiere ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true.
+El ticket endpoint requiere Supabase JWT real.
+```
+
+### Sistema de tickets verificado
+
+- `validate_collaboration_ticket()` rechaza: vacío, inexistente, expirado, mismatch
+- `on_connect` en crdt_routes.py correctamente rejecta conexiones sin ticket válido
+- `one_time=False` por defecto — múltiples clientes pueden compartir ticket
+- TTL 60s por defecto
+
+---
+
+## PM-03D.2 — Yjs smoke real con SUPABASE_TEST_JWT (2026-04-26)
+
+### Checklist
+
+- [x] Verificar precondiciones (Docker, Node, SUPABASE_TEST_JWT)
+- [x] Corregir smoke script (eliminar ticket hardcodeado, usar JWT real)
+- [x] Asegurar ENABLE_EXPERIMENTAL_CRDT_ENDPOINT en Docker Compose
+- [x] Ejecutar stack con flags correctos
+- [x] Probar ticket endpoint con JWT real (HTTP 200, ticket emitido)
+- [x] Corregir bug: on_connect signature (pycrdt pasa msg, scope — no scope, receive)
+- [x] Corregir bug: WebsocketServer.start() en lifespan
+- [x] Corregir bug: import faltante InMemoryTicketStore en issue_collaboration_ticket
+- [x] Ejecutar smoke real (cliente A + B conectan)
+- [x] Descubrir incompatibilidad de protocolo pycrdt vs yjs
+- [x] Documentar hallazgo en PM-03D-yjs-sync-notes.md
+- [x] Actualizar latest_handoff.md
+- [x] py_compile: todos OK
+- [x] Docker build: OK
+- [x] Docker compose config: OK
+
+### Qué funcionó
+
+- Ticket endpoint: HTTP 200 con JWT real, role=owner
+- WebSocket connection: dos clientes conectan simultáneamente
+- JWT no impreso, tickets enmascarados
+- Feature flag pasado correctamente por Docker Compose
+
+### Qué falló
+
+**Yjs bidirectional sync: BLOQUEADO**
+
+pycrdt-websocket usa `[SYNC, SYNC_KIND_fixed, len, data]`
+yjs/y-protocols espera `[SYNC, syncKind_varuint, stateVector_varuint8array]`
+
+El sync de Y.Doc entre pycrdt server y yjs client NO funciona.
+
+### Tests
+
+52 passed, 3 failed (3 fallas por env contamination: ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true en shell hace fallar tests que esperan default False)
+
+### Contrato para siguiente iteración
+
+**PM-03D.3 — Decision gate arquitectura realtime**
+- Evaluar: translation layer, y-websocket server, Hocuspocus, pycrdt client-only, o abandonar
+- NO ejecutar PM-03E todavía
+- PM-03E requiere decisión de arquitectura resuelta
+
+---
+
+## PM-03D — Yjs sync dos clientes con auth viable (2026-04-25)
 
 ### Checklist
 

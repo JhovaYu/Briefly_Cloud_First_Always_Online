@@ -1354,7 +1354,36 @@ Comandos ejecutados:
 
 Pendientes:
   - Approval humano para commit selectivo PM-03C + PM-03C.1
-  - PM-03D: Yjs sync con auth viable
+```
+
+### Handoff PM-03D
+
+```txt
+Fecha: 2026-04-25
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03D — Yjs sync with two real clients + viable auth
+
+Resumen:
+  Implementado sistema de tickets de colaboración (no JWT en query string).
+  El endpoint CRDT /collab/crdt/{ws_id}/{doc_id} ahora valida tickets en on_connect.
+  Tests: 55 passing (20 nuevos de PM-03D).
+
+Decisiones registradas:
+  Ticket auth: opaque short-lived tickets, no JWT en query string
+  TTL default 60s, configurable via TICKET_TTL_SECONDS
+  on_connect validation: reject if ticket invalid/missing/expired/mismatched
+  REST endpoint POST /collab/{ws_id}/{doc_id}/ticket para obtener tickets
+  NO persistence todavía (S3/DynamoDB para PM-03E)
+  NO client Yjs integration todavía (smoke test creado para validar)
+
+Comandos ejecutados:
+  python -m pytest tests/ -v — ✅ 55 passed in 2.44s
+  python -m py_compile (all new files) — ✅ OK
+  docker compose config — ✅ Validated OK
+
+Pendientes:
+  - Approval humano para commit selectivo PM-03D
+  - PM-03E: persistencia S3/DynamoDB + snapshots/debounce
 ```
 
 ## 10. Estado global
@@ -1363,7 +1392,7 @@ Pendientes:
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D-E Pendiente |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D PARTIAL ⚠️, PM-03D.3 Gate ⏳, PM-03E Bloqueada |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1393,24 +1422,50 @@ El proyecto se considera listo para demo cuando:
 
 ## 12. Próximo paso inmediato
 
-**PM-01 y PM-02 completados y validados runtime.**
+**PM-03D PARCIAL — Ticket auth funciona, Yjs sync BLOQUEADO por incompatibilidad de protocolo.**
 
-Próximos pasos:
+### Lo que funciona (validado en PM-03D.2):
+- Ticket endpoint: emite tickets opacos reales (HTTP 200)
+- WebSocket connection: dos clientes conectan con tickets válidos
+- Auth flow: JWT en header, no query string, no logging
+- Feature flag: pasado correctamente por Docker Compose
 
-1. **Commit selectivo PM-02** — approval humano requerido:
-   - `.gitignore` actualizado
-   - `tasks.md` (nuevo)
-   - `migracion_briefly.md` actualizado
-   - `apps/backend/workspace-service/` (domain, ports, adapters, use_cases, api, config)
-   - `docker-compose.yml`, `requirements.txt`, `.env.example`
-   - `docs/contexto.md`, `docs/migration/PM-02-workspace-auth-plan.md`
+### Lo que está bloqueado:
+- Yjs bidirectional sync: pycrdt-websocket y yjs/y-protocols usan formatos de mensaje binario estructuralmente incompatibles
+  - pycrdt: `[SYNC, SYNC_KIND_fixed, len, data]`
+  - yjs: `[SYNC, syncKind_varuint, stateVector_varuint8array]`
 
-2. **PM-03 — Collaboration Service spike** — después de commit PM-02:
-   - pycrdt-websocket WebSocket handshake
-   - Validar Yjs sync con frontend legacy o sandbox
-   - Auth JWT en handshake WebSocket
+### Hallazgo clave (PM-03D.2):
+pycrdt-websocket NO es compatible con clientes yjs sin capa de traducción de protocolo.
 
-3. **Post-commit** — después de approval:
-   - Ejecutar git add selectivo (lista en tasks.md)
-   - git commit con mensaje estructurado
-   - git push cuando aprobado
+**Pendientes:**
+1. Approval humano para commit selectivo de ticket auth infrastructure
+2. PM-03D.3: Decision gate — evaluar estrategia realtime
+3. PM-03E: BLOQUEADO hasta decisión de arquitectura realtime
+
+**Commit seguro — ticket auth infrastructure:**
+
+```bash
+git add \
+  apps/backend/collaboration-service/app/domain/collab_ticket.py \
+  apps/backend/collaboration-service/app/ports/ticket_store.py \
+  apps/backend/collaboration-service/app/adapters/in_memory_ticket_store.py \
+  apps/backend/collaboration-service/app/use_cases/issue_collaboration_ticket.py \
+  apps/backend/collaboration-service/app/use_cases/validate_collaboration_ticket.py \
+  apps/backend/collaboration-service/app/api/routes.py \
+  apps/backend/collaboration-service/app/api/crdt_routes.py \
+  apps/backend/collaboration-service/app/config/settings.py \
+  apps/backend/collaboration-service/app/main.py \
+  apps/backend/collaboration-service/tests/test_collab_tickets.py \
+  docker-compose.yml \
+  docs/migration/PM-03D-yjs-sync-notes.md \
+  docs/migration/latest_handoff.md \
+  tasks.md \
+  migracion_briefly.md
+```
+
+**Excluir:** `apps/backend/collaboration-service/smoke/` (node_modules/ + workspace-specific)
+
+**Después de commit:**
+- PM-03D.3: Decision gate — estrategia realtime (translation layer, y-websocket server, Hocuspocus, o abandonar)
+- PM-03E: NO ejecutar hasta decisión de arquitectura realtime

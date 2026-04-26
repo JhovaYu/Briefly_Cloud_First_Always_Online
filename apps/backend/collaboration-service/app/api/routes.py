@@ -1,16 +1,22 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
+from app.adapters.in_memory_ticket_store import InMemoryTicketStore
 from app.adapters.workspace_client import WorkspacePermissionsClient
 from app.config.settings import Settings
 from app.domain.errors import PermissionDenied, UpstreamUnavailable
 from app.use_cases.authenticate_collaboration import authenticate_collaboration
+from app.use_cases.issue_collaboration_ticket import (
+    issue_collaboration_ticket,
+)
+
 
 router = APIRouter(prefix="/collab")
 
-# Close codes
+# Close codes (exported for tests)
 CLOSE_AUTH_TIMEOUT = 4003
 CLOSE_INVALID_MESSAGE = 4400
 CLOSE_PERMISSION_DENIED = 4003
@@ -32,6 +38,17 @@ def get_workspace_permissions() -> WorkspacePermissionsClient:
         base_url=s.WORKSPACE_SERVICE_URL,
         timeout=s.WORKSPACE_PERMISSION_TIMEOUT_SECONDS,
     )
+
+
+# Global ticket store (singleton per service, in-memory)
+_ticket_store: InMemoryTicketStore | None = None
+
+
+def get_ticket_store() -> InMemoryTicketStore:
+    global _ticket_store
+    if _ticket_store is None:
+        _ticket_store = InMemoryTicketStore()
+    return _ticket_store
 
 
 @router.get("/health")
@@ -124,3 +141,61 @@ async def ws_collab(
                 await websocket.send_json({"type": "echo", "payload": data})
     except WebSocketDisconnect:
         pass
+
+
+class TicketResponse(BaseModel):
+    ticket: str
+    expires_in: int
+    ws_path: str
+    role: str
+
+
+@router.post("/{workspace_id}/{document_id}/ticket", response_model=TicketResponse)
+async def issue_ticket(
+    workspace_id: str,
+    document_id: str,
+    authorization: str = Header(..., alias="Authorization"),
+):
+    """Issue a collaboration ticket for a workspace/document.
+
+    Authorization: Bearer <jwt>
+
+    Returns:
+    {
+      "ticket": "<opaque_id>",
+      "expires_in": 60,
+      "ws_path": "/collab/crdt/{workspace_id}/{document_id}?ticket=<opaque_id>",
+      "role": "owner"
+    }
+
+    Errors:
+    - 401 if JWT invalid/expired
+    - 403 if no permission
+    - 500 if workspace service down
+    """
+    settings = Settings()
+    ticket_store = get_ticket_store()
+
+    try:
+        result = await issue_collaboration_ticket(
+            workspace_id=workspace_id,
+            document_id=document_id,
+            authorization_header=authorization,
+            workspace_service_url=settings.WORKSPACE_SERVICE_URL,
+            ticket_store=ticket_store,
+            permission_timeout=settings.WORKSPACE_PERMISSION_TIMEOUT_SECONDS,
+            ticket_ttl=settings.TICKET_TTL_SECONDS,
+        )
+        return TicketResponse(**result)
+    except PermissionDenied as e:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except UpstreamUnavailable:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Workspace service unavailable",
+        )
+    except Exception as e:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

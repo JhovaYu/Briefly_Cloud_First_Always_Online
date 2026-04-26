@@ -1,36 +1,39 @@
 """
 CRDT WebSocket endpoint using pycrdt-websocket.
 
-This is an experimental endpoint for PM-03C spike.
+This is an experimental endpoint for PM-03D.
 Uses ASGIServer + WebsocketServer for CRDT room management.
+Auth is handled via short-lived opaque tickets (no JWT in query string).
 
-Note: For PM-03C spike, auth is simplified to token-in-query-string.
-The existing /collab/{ws_id}/{doc_id} endpoint continues to use
-first-message JSON auth for compatibility with PM-03B clients.
+Note: This endpoint requires ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true to be mounted.
+The stable endpoint with verified auth is /collab/{ws_id}/{doc_id} (PM-03B first-message auth).
 """
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from starlette.routing import Route, WebSocketRoute
-from starlette.types import ASGIApp
+from typing import Any
 
 from pycrdt.websocket import ASGIServer, WebsocketServer
 
-from app.adapters.pycrdt_room_manager import PycrdtRoomManager
+from app.adapters.in_memory_ticket_store import InMemoryTicketStore
+from app.api.routes import get_ticket_store
+from app.use_cases.validate_collaboration_ticket import (
+    TicketInvalid,
+    validate_collaboration_ticket,
+)
 
 
 # Global room manager instance (singleton per service)
-_room_manager: PycrdtRoomManager | None = None
+_room_manager = None
 
 
-def get_room_manager() -> PycrdtRoomManager:
+def get_room_manager():
     global _room_manager
     if _room_manager is None:
+        from app.adapters.pycrdt_room_manager import PycrdtRoomManager
         _room_manager = PycrdtRoomManager()
     return _room_manager
 
 
-def create_crdt_app() -> tuple[ASGIApp, PycrdtRoomManager]:
+def create_crdt_app() -> tuple[Any, Any]:
     """Create the CRDT ASGI app and return (app, room_manager).
 
     This creates a separate ASGI app mounted at /collab/crdt/*
@@ -39,29 +42,54 @@ def create_crdt_app() -> tuple[ASGIApp, PycrdtRoomManager]:
     manager = get_room_manager()
     ws_server = manager.server
 
-    async def on_connect(scope: dict, receive: dict) -> bool:
-        """Validate token before accepting WebSocket connection.
+    async def on_connect(msg: dict, scope: dict) -> bool:
+        """Validate ticket from query string before accepting WebSocket connection.
 
-        For PM-03C spike: accepts any token for testing.
-        Production would validate against workspace service here.
+        Ticket must be present as ?ticket=<opaque_id>
+        and must match the workspace_id/document_id from the path.
+
         Returns True to reject connection, False to accept.
         """
-        return False  # accept all for now (spike mode)
+        # pycrdt calls on_connect(msg, scope) — scope is the ASGI scope dict
+        # Extract ticket from query string
+        query_string = scope.get("query_string", b"").decode()
+        params = {}
+        if query_string:
+            for part in query_string.split("&"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    params[k] = v
+
+        ticket_id = params.get("ticket", "")
+
+        # Extract workspace_id and document_id from path
+        # Path format: /{workspace_id}/{document_id}
+        path = scope.get("path", "")
+        parts = path.strip("/").split("/")
+        if len(parts) >= 2:
+            workspace_id = parts[-2]
+            document_id = parts[-1]
+        else:
+            return True  # reject: invalid path
+
+        # Validate ticket
+        ticket_store = get_ticket_store()
+        try:
+            await validate_collaboration_ticket(
+                ticket_id=ticket_id,
+                workspace_id=workspace_id,
+                document_id=document_id,
+                ticket_store=ticket_store,
+            )
+            return False  # accept
+        except TicketInvalid:
+            return True  # reject
 
     asgi_server = ASGIServer(ws_server, on_connect=on_connect)
     return asgi_server, manager
 
 
-def create_crdt_subapp() -> ASGIApp:
+def create_crdt_subapp():
     """Create the CRDT sub-application for mounting in main FastAPI app."""
     app, _ = create_crdt_app()
     return app
-
-
-def create_crdt_routes() -> list[Route]:
-    """Create routes for the CRDT WebSocket endpoint.
-
-    Returns a list of Route objects that can be included in a FastAPI app.
-    """
-    _, manager = create_crdt_app()
-    return []  # Routes are added via app.mount() not via router
