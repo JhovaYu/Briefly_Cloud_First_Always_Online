@@ -250,14 +250,12 @@ volumes:
 ✅ python -m pytest apps/backend/collaboration-service/tests -v → 117 passed
 ```
 
-### Runtime smoke: SKIPPED
+### Runtime smoke: PASS (2026-04-26)
 
-Requiere `SUPABASE_TEST_JWT` fresco. Comando manual:
+Ejecutado con fresh JWT. Flujo: Provider A write → disconnect → Provider B ve snapshot persistido.
 
-```bash
-cd apps/backend/collaboration-service/smoke
-npm install
-SUPABASE_TEST_JWT=<tu_jwt> node yjs-persistence-smoke.mjs
+```
+PERSISTENCE PASS: Provider B sees "Persistence Test A" from snapshot
 ```
 
 ### Trade-off: named volume vs bind mount

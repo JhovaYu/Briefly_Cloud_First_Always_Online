@@ -67,14 +67,21 @@ Named volume es la elección correcta para demo — el snapshot sobrevive a recr
 
 ## Runtime smoke result
 
-**SKIPPED: requires fresh SUPABASE_TEST_JWT**
+**PASS: executed 2026-04-26 with fresh SUPABASE_TEST_JWT**
 
-Comando para ejecutar manualmente:
+Flujo completo:
+- Provider A connect → write "Persistence Test A" → disconnect cleanly
+- Wait 5s for snapshot to persist to Docker volume
+- Provider B connect with fresh doc → verify sees "Persistence Test A" from snapshot
+
+```
+PERSISTENCE PASS: Provider B sees "Persistence Test A" from snapshot
+```
+
+Smoke command:
 
 ```bash
-cd apps/backend/collaboration-service/smoke
-npm install
-SUPABASE_TEST_JWT=<tu_jwt> node yjs-persistence-smoke.mjs
+SUPABASE_TEST_JWT=<tu_jwt> node apps/backend/collaboration-service/smoke/yjs-persistence-smoke.mjs
 ```
 
 Smoke flow:
@@ -117,7 +124,7 @@ A apps/backend/collaboration-service/smoke/yjs-persistence-smoke.mjs
 1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Suficiente para PM-03E.1.x.
 2. **No S3/DynamoDB** — fase posterior PM-03E.
 3. **`DOCUMENT_STORE_TYPE=local` en EC2 sin volume** — snapshots se pierden en restart del contenedor si no hay volumen EBS o bind mount.
-4. **Runtime smoke E2E** — no ejecutado por falta de JWT fresco (documentado como SKIPPED).
+4. **Runtime smoke E2E** — PASS (validado 2026-04-26 con JWT fresco)
 
 ## Contrato para la siguiente iteración
 
