@@ -16,3 +16,6 @@ class Settings(BaseSettings):
     DOCUMENT_STORE_TYPE: str = "memory"  # "memory" | "local" | "disabled"
     DOCUMENT_STORE_PATH: str = ".data/collab-snapshots"
     MAX_SNAPSHOT_BYTES: int = 52_428_800  # 50 MB
+    DOCUMENT_SNAPSHOT_INTERVAL_SECONDS: float = 30.0
+    DOCUMENT_EMPTY_ROOM_GRACE_SECONDS: float = 5.0
+    DOCUMENT_PERIODIC_SNAPSHOT_ENABLED: bool = False

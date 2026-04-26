@@ -1,168 +1,171 @@
-# PM-03E.1.2 — Local CRDT Persistence Foundation + Restore Integration
+# PM-03E.2 — Periodic Snapshot Timer + Debounce
 
 **Date:** 2026-04-26
 **Status:** Implementation complete, pending APEX review
 
 ## Objetivo
 
-Implementar persistencia local mínima para Collaboration CRDT usando snapshot-only.
-Esta fase permite que un documento colaborativo:
-1. Guardar snapshot binario del `Doc` CRDT
-2. Cargar snapshot al crear una room
-3. Sobrevivir a limpieza/recreación de room dentro del servicio
-
-**PM-03E.1.2 corrige la documentación contradictoria de PM-03E.1.1:**
-- Restore SÍ funciona via `_ensure_room()` llamado en `on_connect`
-- El bug era documentación, no código
+Resolver el riesgo "Room orphan sin disconnect": rooms que quedan en `server.rooms` con `clients == set` porque el cliente hizo crash sin enviar mensaje de disconnect —这些 cambios se perderían hasta shutdown.
 
 ## Decisiones de Diseño
 
-### DocumentStore Port
+### Dirty Tracking
 
-`app/ports/document_store.py` con interfaz mínima:
-
-```python
-class DocumentStore(ABC):
-    def save(room_key: str, snapshot: bytes) -> None
-    def load(room_key: str) -> bytes | None
-    def delete(room_key: str) -> None
-    def exists(room_key: str) -> bool
-```
-
-### Implementaciones
-
-| Adapter | Uso | Persistencia |
-|---|---|---|
-| `InMemoryDocumentStore` | Tests unitarios | No — diccionario en memoria |
-| `LocalFileDocumentStore` | Desarrollo local | Filesystem — `{root}/{workspace_id}/{document_id}/latest.bin` |
-
-### Restricciones Aplicadas
-
-- **NO BaseYStore** — snapshot-only manual
-- **NO S3/DynamoDB/boto3** — scope de esta fase
-- **NO debounce/timer** — PM-03E.2
-- **Path traversal mitigado** — room_key validado con regex `^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$`
-- **Escritura atómica** — `latest.tmp` → `latest.bin` rename
-
-### Configuración
+pycrdt no tiene API de dirty flag. Implementado via `doc.observe()` callback:
 
 ```python
-DOCUMENT_STORE_TYPE: str = "memory"  # "memory" | "local" | "disabled"
-DOCUMENT_STORE_PATH: str = ".data/collab-snapshots"
-MAX_SNAPSHOT_BYTES: int = 52_428_800  # 50 MB
+def _setup_doc_observer(self, room_key: str, ydoc: Doc) -> None:
+    def on_update(event):
+        self._mark_dirty(room_key)
+    sub = ydoc.observe(on_update)
+    self._doc_subscriptions[room_key] = sub
 ```
 
-### PycrdtRoomManager Changes
+Callback recibe `TransactionEvent` con `update: bytes`. Cada update marca la room como dirty.
 
-- `auto_clean_rooms=False` — cleanup manual en disconnect
-- `asyncio.Lock` por `room_key` — thread-safe room creation
-- `_ensure_room()` — carga snapshot, crea YRoom con ydoc Aplicado, inserta en `server.rooms`
-- `_save_and_cleanup()` — guarda snapshot antes de limpiar room
-- `set_document_store()` — inyección de store post-construcción
-- `track_channel()` / `handle_disconnect()` — cleanup on disconnect
+### Periodic Snapshot Task
 
-### Snapshot Restore — Cómo funciona
+```python
+async def run_periodic_snapshot_once(self) -> None:
+    for room_key, room in list(self._server.rooms.items()):
+        is_empty = len(room.clients) == 0
+        is_dirty = self._is_dirty(room_key)
 
-**Ruta real de restore:**
+        if is_empty:
+            # Empty room
+            if is_dirty:
+                # Dirty + empty → save + remove
+            elif empty_duration >= grace:
+                # Empty, not dirty, grace expired → save + remove
+        else:
+            # Room has active clients
+            if is_dirty:
+                # Save dirty room but do NOT remove
+```
 
-1. Cliente conecta → `on_connect` → `validate_collaboration_ticket()` → `await _ensure_room(ws, doc)`
-2. `_ensure_room()`: carga snapshot del DocumentStore, crea Doc, aplica snapshot, crea YRoom(ydoc=doc), inserta en `server.rooms[room_key]`
-3. pycrdtinternally calls `server.get_room(room_key)` → encuentra room ya en `server.rooms` → retorna existente (no recrea)
-4. YRoom.ydoc YA tiene el snapshot aplicado
-5. Cliente recibe sync con contenido restaurado
+### Orphan Cleanup Logic
 
-**Key insight:** `WebsocketServer.get_room()` retorna existente si `name in self.rooms`. Si preinsertamos la room con snapshot, reutiliza esa room sin crear nueva.
-
-### Lifecycle Room
-
-| Evento | ¿Snapshot guardado? |
+| Room state | Action |
 |---|---|
-| Room creada en on_connect | **SÍ — snapshot cargado via _ensure_room** |
-| Último cliente disconnect | SÍ — vía handle_disconnect |
-| Service shutdown | SÍ — lifespan shutdown itera server.rooms |
-| close_room() manual | SÍ — save+delete |
+| Dirty + empty | Save snapshot, remove room from server |
+| Empty + grace expired + not dirty | Save snapshot (if any), remove room |
+| Empty + within grace | Keep (waiting for reconnect or dirty) |
+| Has clients + dirty | Save snapshot, keep room (active) |
+| Has clients + clean | No action |
 
-## API Verification Real (pycrdt-websocket v0.16.0)
+### Grace Period
+
+`_empty_room_grace = 5.0` segundos. Permite que un cliente que se déconecta brevemente (reconnect rápido) no pierda su room.
+
+### Periodic Config
+
+```python
+set_periodic_config(enabled=True, interval=30.0, grace=5.0)
+start_periodic_snapshot_task()  # idempotente
+stop_periodic_snapshot_task()  # cancela task
+```
+
+## API Verification
 
 | Hallazgo | Detalle |
 |---|---|
-| `WebsocketServer(auto_clean_rooms=False)` | ✅ Funciona — rooms nunca auto-borradas |
-| `WebsocketServer.rooms` | ✅ Es `dict[str, YRoom]` — accesible directamente |
-| `WebsocketServer.get_room()` | ✅ Retorna existente si ya en rooms, sino crea nueva |
-| `YRoom(ready=True/False)` | ✅ Funciona — controla ready event |
-| `YRoom.ydoc` | ✅ atributo público, `Doc` instance |
-| `YRoom(ydoc=doc)` | ✅ Usa el doc proporcionado, no crea nuevo |
-| `room.clients` | ✅ `set()` — removal sincrono en finally de serve() |
-| `server.delete_room(name=...)` | ✅ Acepta `name` o `room` como keyword |
-| `doc.get_update()` | ✅ Retorna `bytes` de updates desde estado inicial |
-| `doc.apply_update(snapshot)` | ✅ Aplica update binario al Doc |
-| `ASGIServer(on_disconnect=)` | ✅ Callback: `Callable[[dict], None\|Awaitable[None]]` |
+| `doc.observe(callback)` | ✅ Funciona — callback recibe `TransactionEvent` |
+| `ydoc.get_update()` | ✅ Retorna `bytes` con todos los updates |
+| `asyncio.create_task()` | ✅ Crea tarea background |
+| `asyncio.create_task()` en test no-async | ❌ `RuntimeError: no running event loop` — test debe ser `async` |
+| Task cancel + `task.result()` | ❌ `InvalidStateError` — no llamar `.result()` en task cancelado |
+| `time.monotonic()` | ✅ Clock monotonic para duraciones |
+
+## Config Settings
+
+```python
+DOCUMENT_SNAPSHOT_INTERVAL_SECONDS: float = 30.0      # intervalo
+DOCUMENT_EMPTY_ROOM_GRACE_SECONDS: float = 5.0         # grace
+DOCUMENT_PERIODIC_SNAPSHOT_ENABLED: bool = False      # feature flag
+MAX_SNAPSHOT_BYTES: int = 52_428_800                   # 50 MB cap
+```
+
+## Lifecycle Room (PM-03E.2)
+
+| Evento | ¿Snapshot guardado? |
+|---|---|
+| Room creada en on_connect | **SÍ — snapshot cargado via `_ensure_room()`** |
+| Último cliente disconnect | **SÍ — vía `handle_disconnect()`** |
+| Orphan (crash sin disconnect) | **SÍ — vía periodic timer tras grace period** |
+| Room con clientes activos + dirty | **SÍ — vía periodic timer (no se remueve)** |
+| Service shutdown | **SÍ — lifespan shutdown itera `server.rooms`** |
+| `close_room()` manual | **SÍ — save+delete** |
 
 ## Tests
 
 ```
 python -m pytest apps/backend/collaboration-service/tests -v
-→ 99 passed in 2.74s ✅
-  - test_document_store.py: 19 tests (InMemory + LocalFile)
-  - test_room_lifecycle.py: 14 tests (channel tracking, close_room)
-  - test_snapshot_restore.py: 11 tests (restore cycle, pre-creation)
+→ 117 passed in 2.62s ✅
+  - test_document_store.py: 19 tests
+  - test_room_lifecycle.py: 14 tests
+  - test_snapshot_restore.py: 11 tests
   - test_ws_crdt.py: 15 tests
   - test_ws_auth.py: 15 tests
   - test_collab_tickets.py: 19 tests
   - test_ws_echo.py: 6 tests
+  - test_periodic_snapshot.py: 18 tests (NEW)
 ```
 
-### Snapshot restore tests cover:
-- save + delete + recreate + load cycle
-- room with existing snapshot loads content before client sync
-- room without snapshot creates empty doc
-- two rooms maintain independent snapshots
-- corrupt snapshot does not crash service
-- close_room saves snapshot before deletion
+### Periodic snapshot test coverage
+
+**TestDirtyTracking:**
+- `_mark_dirty` sets flag
+- `_mark_clean` clears flag
+- unknown room returns False
+- new room starts clean
+
+**TestPeriodicSave:**
+- dirty room is saved
+- clean room not rewritten
+- room with active clients NOT removed (saved if dirty)
+- empty room beyond grace saved+removed
+- empty room within grace kept
+- two dirty rooms both saved
+- oversized snapshot skipped
+- corrupt snapshot handled
+
+**TestPeriodicTaskLifecycle:**
+- start is idempotent (no duplicate tasks)
+- stop without start no error
+- stop cancels task
+
+**TestDocObserverSetup:**
+- `_ensure_room` sets up observer
+- room loaded from snapshot starts clean
 
 ## Validaciones
 
 ```
-✅ python -m pytest apps/backend/collaboration-service/tests -v → 99 passed
-✅ python -m py_compile (todos los archivos)
-✅ docker compose config → Validado
+✅ python -m pytest apps/backend/collaboration-service/tests -v → 117 passed
+✅ python -m py_compile (todos los archivos) → OK
+✅ docker compose config → Validated
 ✅ docker compose build collaboration-service → Built OK
 ```
 
-## Git Status Final
+## Git Status
 
 ```
-M  apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
-M  apps/backend/collaboration-service/app/api/crdt_routes.py
-M  apps/backend/collaboration-service/app/config/settings.py
-M  apps/backend/collaboration-service/app/main.py
-M  docs/migration/latest_handoff.md
-M  migracion_briefly.md
-M  tasks.md
-?? apps/backend/collaboration-service/app/adapters/in_memory_document_store.py
-?? apps/backend/collaboration-service/app/adapters/local_file_document_store.py
-?? apps/backend/collaboration-service/app/ports/document_store.py
-?? apps/backend/collaboration-service/tests/test_document_store.py
-?? apps/backend/collaboration-service/tests/test_room_lifecycle.py
-?? apps/backend/collaboration-service/tests/test_snapshot_restore.py
-?? docs/migration/PM-03E-persistence-design.md
+ M apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
+ M apps/backend/collaboration-service/app/config/settings.py
+ M apps/backend/collaboration-service/app/main.py
+ M tasks.md
+?? apps/backend/collaboration-service/tests/test_periodic_snapshot.py
 ```
 
 ## Archivos para Commit
 
 ```
-A apps/backend/collaboration-service/app/adapters/in_memory_document_store.py
-A apps/backend/collaboration-service/app/adapters/local_file_document_store.py
-A apps/backend/collaboration-service/app/ports/document_store.py
-A apps/backend/collaboration-service/tests/test_document_store.py
-A apps/backend/collaboration-service/tests/test_room_lifecycle.py
-A apps/backend/collaboration-service/tests/test_snapshot_restore.py
 M apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
-M apps/backend/collaboration-service/app/api/crdt_routes.py
 M apps/backend/collaboration-service/app/config/settings.py
 M apps/backend/collaboration-service/app/main.py
-A docs/migration/PM-03E-persistence-design.md
+A apps/backend/collaboration-service/tests/test_periodic_snapshot.py
 M docs/migration/latest_handoff.md
+M docs/migration/PM-03E-persistence-design.md
 M migracion_briefly.md
 M tasks.md
 ```
@@ -176,29 +179,29 @@ auditaciones_comandos.txt
 
 ## Riesgos Restantes
 
-1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Limitado para debugging. Suficiente para PM-03E.1.x.
-2. **Room orphan sin disconnect** — Cliente crash sin disconnect = no snapshot hasta shutdown. PM-03E.2 timer lo resolverá.
-3. **`DOCUMENT_STORE_TYPE=local` en Docker** — Sin bind mount, snapshots se pierden en restart.
+1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Suficiente para PM-03E.1.x.
+2. **`DOCUMENT_STORE_TYPE=local` en Docker** — Sin bind mount, snapshots se pierden en restart.
+3. **No S3/DynamoDB** — fase posterior PM-03E.
 
 ## Siguiente Paso Recomendado
 
-**PM-03E.2: Debounce/Periodic Save Timer**
-- Implementar tarea periódica (30s) que escanee `server.rooms` y persista las que tengan `clients == set`
-- Detecta orphan rooms (cliente crash sin disconnect)
-- Mejora `id(msg)` → Channel real detection si es viable
+**PM-03E: Persistencia S3/DynamoDB**
+- Reemplazar `LocalFileDocumentStore` por DynamoDB + S3
+- Mantener `DocumentStore` port para swap sin cambios en room manager
+- No modificar interface `RoomManager`
 
 ## Criterios de Aceptación Cumplidos
 
-- ✅ `DocumentStore` port existe
-- ✅ `InMemoryDocumentStore` pasa tests
-- ✅ `LocalFileDocumentStore` pasa tests
-- ✅ `PycrdtRoomManager` puede cargar snapshot antes de entregar room
-- ✅ `PycrdtRoomManager` puede guardar snapshot antes de limpiar room
-- ✅ `on_connect` precrea room con snapshot
-- ✅ `auto_clean_rooms=False` configurado
-- ✅ No se introduce AWS/DynamoDB/boto3
-- ✅ No se rompe PM-03D.5
-- ✅ Tests Python pasan (99)
-- ✅ Docker build pasa
+- ✅ Dirty tracking via `doc.observe()`
+- ✅ Periodic snapshot task (30s, idempotente)
+- ✅ `run_periodic_snapshot_once()` testeable sin sleeps
+- ✅ Orphan cleanup tras grace period
+- ✅ Active rooms preservadas (no removidas)
+- ✅ Start/stop lifecycle correcto
+- ✅ Settings interval/grace/enabled
+- ✅ 18 tests nuevos pasando
+- ✅ 117 tests total pasando
+- ✅ Docker build OK
+- ✅ No S3/DynamoDB/boto3
 - ✅ NO commit/push realizado
-- ✅ Documentación deja de estar contradictoria
+- ✅ Documentación actualizada a PM-03E.2

@@ -36,7 +36,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [ ] PM-03D.5 — Nginx/reconnect hardening (implementado, no validado por JWT expiry)
 - [x] PM-03E.1.1 — Local CRDT persistence lifecycle hardening (2026-04-26)
 - [x] PM-03E.1.2 — Snapshot restore integration fix (2026-04-26)
-- [ ] PM-03E.2 — Periodic timer/debounce
+- [x] PM-03E.2 — Periodic timer/debounce (2026-04-26)
 - [ ] PM-03E — Persistencia S3/DynamoDB
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
@@ -227,6 +227,57 @@ PM-03E: Persistencia S3/DynamoDB (siguiente fase, no bloqueado).
 
 PM-03E.1.1 COMPLETO — listo para revisión APEX.
 PM-03E.2: Periodic timer (debounce) para rooms huérfanas sin clientes.
+
+---
+
+## PM-03E.2 — Periodic snapshot timer + debounce (2026-04-26) ✅
+
+### Checklist
+
+- [x] Dirty tracking via doc.observe() en _ensure_room
+- [x] _mark_dirty / _mark_clean / _is_dirty por room
+- [x] run_periodic_snapshot_once() — guarda dirty, limpia vacías tras grace
+- [x] start_periodic_snapshot_task() / stop_periodic_snapshot_task()
+- [x] _setup_doc_observer() — observa ydoc para marcar dirty
+- [x] Settings: DOCUMENT_SNAPSHOT_INTERVAL_SECONDS, DOCUMENT_EMPTY_ROOM_GRACE_SECONDS, DOCUMENT_PERIODIC_SNAPSHOT_ENABLED
+- [x] lifespan: inicia/stopa periodic task
+- [x] 18 new tests en test_periodic_snapshot.py
+- [x] 117 total PASS
+- [x] py_compile todos OK
+- [x] docker compose build OK
+- [x] tasks.md y migracion_briefly.md actualizados
+
+### Implementado
+
+**Dirty tracking:**
+- `doc.observe(on_update)` → callback que llama `_mark_dirty(room_key)`
+- Registration en `_setup_doc_observer()` cuando se crea room
+- Cleanup en `handle_disconnect` y `close_room`
+
+**Periodic save (run_periodic_snapshot_once):**
+- Empty + dirty → save snapshot + stop room + delete from server
+- Empty + not dirty + grace expired → save clean + stop + delete
+- Empty + not dirty + within grace → do nothing
+- Has clients + dirty → save snapshot (no delete)
+- Has clients + not dirty → do nothing
+
+**Task lifecycle:**
+- `start_periodic_snapshot_task()`: idempotent, no duplicates
+- `stop_periodic_snapshot_task()`: cancels task, sets to None
+- Background loop: `asyncio.sleep(interval)` + call `run_periodic_snapshot_once()`
+
+### Settings
+
+```python
+DOCUMENT_SNAPSHOT_INTERVAL_SECONDS: float = 30.0    # default disabled (False)
+DOCUMENT_EMPTY_ROOM_GRACE_SECONDS: float = 5.0
+DOCUMENT_PERIODIC_SNAPSHOT_ENABLED: bool = False
+```
+
+### Contrato para siguiente iteración
+
+PM-03E.2 COMPLETO — listo para revisión APEX.
+PM-03E: Persistencia S3/DynamoDB (siguiente fase).
 
 ---
 

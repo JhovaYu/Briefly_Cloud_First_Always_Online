@@ -1436,7 +1436,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E Siguiente |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26) |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1579,6 +1579,58 @@ Esto asegura que cuando pycrdt hace `get_room()` internamente, la room YA está 
 ### Contrato para siguiente iteración:
 - PM-03E.1.2 COMPLETO — listo para revisión APEX
 - PM-03E.2: Periodic timer para rooms huérfanas sin disconnect
+
+---
+
+## PM-03E.2 — Periodic snapshot timer + debounce (2026-04-26) ✅
+
+### Problema resuelto
+
+**"Room orphan sin disconnect"**: cliente crash sin disconnect → room huérfana en `server.rooms` con `clients == set` → cambios no guardados hasta shutdown.
+
+### Solución implementada
+
+1. **Dirty tracking**: `doc.observe()` callback marca room como dirty cuando hay cambios sin guardar
+2. **Periodic snapshot task**: tarea background cada 30s escanea rooms, persiste las dirty
+3. **Orphan cleanup**: rooms vacías pasadas grace period (5s) son guardadas y removidas
+4. **Active room preservation**: rooms con clientes activos NO se remueven aunque estén dirty
+
+### Implementado:
+
+- `_mark_dirty()` / `_mark_clean()` / `_is_dirty()` ✅
+- `_setup_doc_observer()` con `doc.observe()` ✅
+- `start_periodic_snapshot_task()` / `stop_periodic_snapshot_task()` ✅
+- `run_periodic_snapshot_once()` — testeable sin sleeps ✅
+- `_periodic_snapshot_loop()` background con sleep ✅
+- `_room_empty_since` timestamps para orphan detection ✅
+- Settings: `DOCUMENT_SNAPSHOT_INTERVAL_SECONDS`, `DOCUMENT_EMPTY_ROOM_GRACE_SECONDS`, `DOCUMENT_PERIODIC_SNAPSHOT_ENABLED` ✅
+- Lifespan start/stop periodic task ✅
+- 18 new tests, 117 total PASS ✅
+
+### Periodic snapshot logic:
+
+| Room state | Action |
+|---|---|
+| Dirty + empty | Save snapshot, remove room |
+| Empty + grace expired + not dirty | Save snapshot (if any), remove room |
+| Empty + within grace | Keep (waiting for reconnect or dirty) |
+| Has clients + dirty | Save snapshot, keep room (active) |
+| Has clients + clean | No action |
+
+### Snapshot lifecycle (PM-03E.2):
+
+| Evento | ¿Guardado? |
+|---|---|
+| Room creada en on_connect | **SÍ — snapshot cargado** |
+| Último cliente disconnect | SÍ |
+| **Orphan (crash sin disconnect)** | **SÍ — periodic timer tras grace** |
+| **Room con clientes activos + dirty** | **SÍ — periodic timer (no se remueve)** |
+| Service shutdown | SÍ |
+| close_room() manual | SÍ |
+
+### Contrato para siguiente iteración:
+- PM-03E.2 COMPLETO — listo para revisión APEX
+- PM-03E: Persistencia S3/DynamoDB (fase posterior — no bloqueado)
 
 ---
 

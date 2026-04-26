@@ -22,8 +22,23 @@ async def lifespan(app: FastAPI):
         task = asyncio.create_task(_room_manager.server.start())
         # Give it a moment to start
         await asyncio.sleep(0.1)
+        # Start periodic snapshot task if enabled
+        _settings = Settings()
+        if (
+            _settings.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT
+            and _settings.DOCUMENT_PERIODIC_SNAPSHOT_ENABLED
+            and _room_manager._document_store is not None
+        ):
+            _room_manager.set_periodic_config(
+                enabled=True,
+                interval=_settings.DOCUMENT_SNAPSHOT_INTERVAL_SECONDS,
+                grace=_settings.DOCUMENT_EMPTY_ROOM_GRACE_SECONDS,
+            )
+            _room_manager.start_periodic_snapshot_task()
     yield
     if _room_manager is not None:
+        # Stop periodic task first
+        _room_manager.stop_periodic_snapshot_task()
         # Save snapshots for all active rooms before shutdown
         for room_key, room in _room_manager.server.rooms.items():
             if room.ydoc is not None:
