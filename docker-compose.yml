@@ -11,6 +11,11 @@ services:
       - LOG_LEVEL=INFO
       - ENVIRONMENT=local
       - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - SUPABASE_URL=https://gcbwysprkqsfakaqsara.supabase.co
+      - SUPABASE_JWT_ISSUER=https://gcbwysprkqsfakaqsara.supabase.co/auth/v1
+      - SUPABASE_JWT_AUDIENCE=authenticated
+      - SUPABASE_AUTH_STRATEGY=jwks
+      - SUPABASE_JWKS_URL=https://gcbwysprkqsfakaqsara.supabase.co/auth/v1/.well-known/jwks.json
     mem_limit: 128m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]

@@ -1,12 +1,4 @@
-from pydantic_settings import BaseSettings
+# Backwards compatibility — imports moved to app.config.settings
+from app.config.settings import Settings
 
-
-class Settings(BaseSettings):
-    SERVICE_PORT: int = 8001
-    LOG_LEVEL: str = "INFO"
-    ENVIRONMENT: str = "local"
-    SHARED_SECRET: str = "changeme"
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+__all__ = ["Settings"]

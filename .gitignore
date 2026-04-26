@@ -8,12 +8,28 @@ release
 .env
 .env.*
 !.env.example
-# Configuración local del agente (Antigravity) — solo en esta PC
-STUDIO_CONTEXT.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# Local AI/tooling
+.claude/
+.mcp.json
+
+# Generated context / repomix
+briefly-architecture-repomix.md
 repomix-output.txt
-.agents
 contexto_export.txt
 AUDITORIA_TECNICA.md
-repomix-output.txt
 api_key.txt
 contexto_llm.txt
+
+# Configuración local del agente (Antigravity) — solo en esta PC
+STUDIO_CONTEXT.md
+.agents

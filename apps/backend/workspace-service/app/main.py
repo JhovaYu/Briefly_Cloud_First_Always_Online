@@ -2,6 +2,9 @@ import uvicorn
 from fastapi import FastAPI
 
 from app.api.routes import router
+from app.config.settings import Settings
+
+settings = Settings()
 
 app = FastAPI(title="workspace-service")
 app.include_router(router)
@@ -18,4 +21,9 @@ def healthz():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=False)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.SERVICE_PORT,
+        reload=False,
+    )
