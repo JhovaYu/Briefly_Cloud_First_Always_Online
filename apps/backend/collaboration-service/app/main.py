@@ -65,6 +65,16 @@ if _settings.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:
     elif _settings.DOCUMENT_STORE_TYPE == "local":
         from app.adapters.local_file_document_store import LocalFileDocumentStore
         document_store = LocalFileDocumentStore(root=_settings.DOCUMENT_STORE_PATH)
+    elif _settings.DOCUMENT_STORE_TYPE == "s3":
+        if not _settings.AWS_S3_BUCKET_NAME:
+            raise ValueError("AWS_S3_BUCKET_NAME is required when DOCUMENT_STORE_TYPE=s3")
+        from app.adapters.s3_document_store import S3DocumentStore
+        endpoint_url = _settings.AWS_ENDPOINT_URL or None
+        document_store = S3DocumentStore(
+            bucket=_settings.AWS_S3_BUCKET_NAME,
+            region=_settings.AWS_REGION,
+            endpoint_url=endpoint_url,
+        )
     # DOCUMENT_STORE_TYPE="disabled" means no persistence
     crdt_app, manager = create_crdt_app(document_store)
     if document_store is not None:

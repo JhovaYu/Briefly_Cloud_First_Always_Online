@@ -276,3 +276,49 @@ PERSISTENCE PASS: Provider B sees "Persistence Test A" from snapshot
 - ✅ Docker build OK
 - ✅ NO commit/push realizado
 - ✅ Documentación actualizada a PM-03E.3
+
+---
+
+## PM-03E.4A — S3DocumentStore with moto mocked tests (2026-04-26) ✅
+
+### Problema resuelto
+
+Reemplazar `LocalFileDocumentStore` por `S3DocumentStore` para persistencia en S3, sin tocar AWS real.
+
+### Solución implementada
+
+1. **`S3DocumentStore`** adapter en `app/adapters/s3_document_store.py`
+2. **`DOCUMENT_STORE_TYPE=s3`** integrado en settings + main.py
+3. **Tests con `moto.mock_aws()`** — 13 tests passando sin AWS real
+4. **Key format:** `collab-snapshots/{workspace_id}/{document_id}/latest.bin`
+5. **Metadata:** solo `workspace-id` y `document-id` — sin secrets
+
+### Key design decisions
+
+| Decisión | Justificación |
+|---|---|
+| S3-only (no DynamoDB) | Object metadata basta para MVP — queries no necesarias |
+| IAM role preferred | boto3 default chain — no hardcoded keys |
+| `endpoint_url` opcional | Soporta moto en tests + LocalStack en dev |
+| `NoSuchKey` → `None`/`False` | Matching behavior con `LocalFileDocumentStore` |
+
+### Configuración
+
+```python
+DOCUMENT_STORE_TYPE=s3
+AWS_S3_BUCKET_NAME=briefly-cloud-first-collab-snapshots
+AWS_REGION=us-east-1
+# AWS_ENDPOINT_URL=  # para moto/LocalStack
+```
+
+### Criterios de Aceptación Cumplidos
+
+- ✅ `S3DocumentStore` implementa `DocumentStore` port
+- ✅ 13 tests con `moto.mock_aws()` passando
+- ✅ `LocalFileDocumentStore` no se rompe
+- ✅ `DOCUMENT_STORE_TYPE=s3` integrado en settings/main
+- ✅ No AWS real, no credenciales reales
+- ✅ No DynamoDB
+- ✅ Metadata sin secrets
+- ✅ 130 tests total passando
+- ✅ Docker build OK

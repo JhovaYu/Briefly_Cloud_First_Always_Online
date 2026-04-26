@@ -1436,7 +1436,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26) |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26) |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1687,7 +1687,47 @@ PERSISTENCE PASS: Provider B sees "Persistence Test A" from snapshot
 
 ### Contrato para siguiente iteración:
 - PM-03E.3 COMPLETO — listo para revisión APEX
-- PM-03E: Persistencia S3/DynamoDB (fase posterior — no bloqueado)
+- PM-03E.4A COMPLETO — S3DocumentStore con moto mocked (2026-04-26)
+- PM-03E.4B: Docker/local config no-regression (próximo paso)
+- PM-03E.5: AWS real wiring (requiere approval separate)
+
+---
+
+## PM-03E.4A — S3DocumentStore with moto mocked tests (2026-04-26) ✅
+
+### Implementado
+
+1. **`S3DocumentStore`** adapter (`app/adapters/s3_document_store.py`)
+   - Implementa `DocumentStore` port — swap sin cambios en room manager
+   - Key format: `collab-snapshots/{workspace_id}/{document_id}/latest.bin`
+   - Metadata: solo `workspace-id` y `document-id` — sin secrets
+   - `NoSuchKey` → `None`/`False` — matching behavior con `LocalFileDocumentStore`
+   - Soporta `endpoint_url` opcional (moto tests + LocalStack dev)
+
+2. **Settings** (`app/config/settings.py`)
+   - `DOCUMENT_STORE_TYPE`: ahora soporta `memory | local | s3 | disabled`
+   - `AWS_S3_BUCKET_NAME`, `AWS_REGION`, `AWS_ENDPOINT_URL`
+
+3. **main.py** — branch `DOCUMENT_STORE_TYPE == "s3"` crea `S3DocumentStore`
+   - Valida que `AWS_S3_BUCKET_NAME` esté configurado al startup
+
+4. **Tests con `moto.mock_aws()`** — 13 tests passing
+   - `test_s3_save_load_roundtrip`, `test_s3_load_nonexistent_returns_none`
+   - `test_s3_exists_after_save`, `test_s3_delete_removes_object`
+   - `test_s3_rejects_invalid_room_key`, `test_s3_key_format_matches_expected_prefix`
+   - `test_s3_metadata_does_not_include_secrets`, y más
+
+5. **Dependencies**
+   - `boto3>=1.34.0` en requirements.txt
+   - `moto[s3]>=5.0.0` en requirements-dev.txt
+
+### S3-only (no DynamoDB)
+
+Object metadata en S3 es suficiente para el MVP. DynamoDB puede evaluarse en PM-03E.5 si se necesitan queries sobre metadata de snapshots.
+
+### Contrato para siguiente iteración:
+- PM-03E.4B: Docker/local config no-regression
+- PM-03E.5: AWS real wiring
 
 ---
 
