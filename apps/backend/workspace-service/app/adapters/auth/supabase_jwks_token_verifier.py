@@ -1,5 +1,5 @@
 import jwt
-from jwt import PyJWKClient, PyJWKClientError, ExpiredSignatureError, InvalidTokenError
+from jwt import PyJWKClient, PyJWKClientError, ExpiredSignatureError, InvalidTokenError, MissingRequiredClaimError
 
 from app.domain.errors import Unauthorized, AuthServiceUnavailable
 from app.ports.token_verifier import TokenVerifier, TokenPayload
@@ -22,9 +22,11 @@ class SupabaseJWKSVerifier(TokenVerifier):
                 audience=self.audience,
             )
             return TokenPayload(**payload)
-        except PyJWKClientError as e:
-            raise AuthServiceUnavailable(f"JWKS error: {e}")
         except ExpiredSignatureError:
             raise Unauthorized("Token expired")
-        except InvalidTokenError as e:
-            raise Unauthorized(f"Token inválido: {e}")
+        except MissingRequiredClaimError:
+            raise Unauthorized("Invalid token")
+        except InvalidTokenError:
+            raise Unauthorized("Invalid token")
+        except PyJWKClientError:
+            raise AuthServiceUnavailable("Authentication service unavailable")

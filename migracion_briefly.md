@@ -912,6 +912,22 @@ Opciones: PWA, React Native
 Razón: React Native permite demo mobile más fluida y controlada.
 Impacto: Afecta fases frontend/mobile posteriores (PM-06/Fase 5), no PM-02 backend.
 Aprobado por: Equipo
+
+Fecha: 2026-04-25
+Decisión: JWT errors genéricos — no filtrar detalles internos PyJWT.
+Contexto: Errores como "Not enough segments" exponían detalles internos de la librería.
+Opciones: Mantener detalles internos, generaricos
+Razón: Seguridad — no filtrar información de implementación a usuarios/clientes.
+Impacto: Afecta response body de /me con token inválido.
+Aprobado por: Equipo
+
+Fecha: 2026-04-25
+Decisión: SupabaseJWKSVerifier cacheado como singleton en dependencies.py.
+Contexto: Se creaba un nuevo PyJWKClient por cada request.
+Opciones: Singleton, crear por request
+Razón: Performance — JWKS client hace HTTP fetch; cachear reduce latencia y carga.
+Impacto: Una sola instancia por runtime de la app.
+Aprobado por: Equipo
 ```
 
 ---
@@ -1091,6 +1107,44 @@ Pendientes:
   - Docker runtime validation en máquina con Docker Desktop
   - Commit selectivo de archivos PM-02
   - Approval humano antes de commit
+```
+
+### Entrada 004
+
+```txt
+Fecha: 2026-04-25
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-02C — Hardening + Tests + Docs Sync
+
+Resumen:
+  Singleton JWT verifier implementado. Errores JWT genéricos (no filtran detalles internos PyJWT).
+  5 tests pytest agregados (auth + health). .gitattributes creado. Deprecaciones Pydantic V2 corregidas.
+  tasks.md y migracion_briefly.md actualizados con PM-02C.
+
+Archivos modificados:
+  apps/backend/workspace-service/app/api/dependencies.py — singleton _token_verifier
+  apps/backend/workspace-service/app/adapters/auth/supabase_jwks_token_verifier.py — errores genéricos
+  apps/backend/workspace-service/app/api/schemas.py — ConfigDict (Pydantic V2)
+  apps/backend/workspace-service/app/config/settings.py — SettingsConfigDict (Pydantic V2)
+
+Archivos creados:
+  apps/backend/workspace-service/tests/__init__.py
+  apps/backend/workspace-service/tests/test_auth.py
+  apps/backend/workspace-service/requirements-dev.txt
+  .gitattributes
+  tasks.md (actualizado)
+
+Comandos ejecutados:
+  python -m py_compile (todos los archivos) — ✅ Syntax OK
+  pip install pytest httpx fastapi
+  python -m pytest apps/backend/workspace-service/tests -v — ✅ 5 passed in 0.62s
+
+Decisiones registradas:
+  JWT errors genéricos — no filtrar detalles internos PyJWT
+  SupabaseJWKSVerifier cacheado como singleton
+
+Pendientes:
+  - Approval humano para commit selectivo PM-02C
 ```
 
 ---

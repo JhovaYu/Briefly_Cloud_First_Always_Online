@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -6,14 +6,13 @@ class CreateWorkspaceRequest(BaseModel):
 
 
 class WorkspaceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     owner_id: str
     created_at: str
     updated_at: str
-
-    class Config:
-        from_attributes = True
 
 
 class WorkspaceListResponse(BaseModel):
@@ -25,15 +24,14 @@ class CreateDocumentRequest(BaseModel):
 
 
 class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     workspace_id: str
     title: str
     created_by: str
     created_at: str
     updated_at: str
-
-    class Config:
-        from_attributes = True
 
 
 class DocumentListResponse(BaseModel):

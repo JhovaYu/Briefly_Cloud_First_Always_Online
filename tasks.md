@@ -28,6 +28,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-01 — Foundation local backend
 - [x] PM-02A — Workspace Service hygiene + syntax validation
 - [x] PM-02B — Workspace Service runtime validation
+- [x] PM-02C — Workspace Service hardening (tests + fixes)
 - [ ] PM-02 — Commit selectivo pendiente de aprobación humana
 - [ ] PM-03 — Collaboration Service spike
 - [ ] PM-04 — Planning Service REST
@@ -35,6 +36,42 @@ Este archivo es la bitácora auditable de ejecución.
 - [ ] PM-06 — Frontend cloud-first + React Native integration
 - [ ] PM-07 — AWS deployment
 - [ ] PM-08 — Burn-in/demo
+
+---
+
+## PM-02C — Hardening + Tests (2026-04-25)
+
+### Checklist
+
+- [x] Cachear SupabaseJWKSVerifier como singleton en dependencies.py
+- [x] Generificar errores JWT (no exponer detalles internos PyJWT)
+- [x] Agregar tests automáticos mínimos (pytest + TestClient)
+- [x] Agregar `.gitattributes`
+- [x] Corregir advertencias de deprecación Pydantic V2 (ConfigDict)
+- [x] Validar tests con pytest
+- [x] Actualizar `migracion_briefly.md`
+- [x] Preparar lista de commit selectivo
+
+### Cambios realizados
+
+1. **Singleton JWT verifier** — `dependencies.py` ahora cachea `_token_verifier` global, una sola instancia por runtime
+2. **Errores JWT genéricos** — `supabase_jwks_token_verifier.py` ya no filtra `Not enough segments` ni detalles internos de PyJWT
+3. **Tests auth** — 5 tests agregados en `tests/test_auth.py`: health x2, auth negative x3
+4. **`.gitattributes`** — normalización LF para archivos de texto, binary para pyc/png/etc
+5. **Pydantic V2** — `schemas.py` y `settings.py` actualizados a `ConfigDict`
+6. **requirements-dev.txt** — pytest + httpx para tests locales
+
+### Validaciones ejecutadas
+
+```
+python -m pytest apps/backend/workspace-service/tests -v
+→ 5 passed in 0.62s (sin warnings de deprecación)
+python -m py_compile (todos los archivos) → Syntax OK
+```
+
+### Commit selectivo
+
+- [ ] Pendiente — awaiting human approval
 
 ---
 
@@ -51,10 +88,10 @@ Este archivo es la bitácora auditable de ejecución.
 
 ### Runtime Docker
 
-- [x] Ejecutar `docker compose config` — ✅ Syntax validated OK
-- [x] Ejecutar `docker compose build workspace-service` — ✅ Build successful
-- [x] Ejecutar `docker compose up -d workspace-service nginx` — ✅ All containers up
-- [x] Ejecutar `docker compose ps` — ✅ 6/6 healthy (workspace-service, nginx, collaboration, planning, intelligence, utility)
+- [x] `docker compose config` — ✅ Syntax validated OK
+- [x] `docker compose build workspace-service` — ✅ Build successful
+- [x] `docker compose up -d workspace-service nginx` — ✅ All containers up
+- [x] `docker compose ps` — ✅ 6/6 healthy
 
 ### Healthchecks
 
@@ -66,24 +103,9 @@ Este archivo es la bitácora auditable de ejecución.
 ### Auth negative tests
 
 - [x] `curl -i http://localhost:8001/me` → 401 `{"detail":"Not authenticated"}`
-- [x] `curl -i http://localhost:8001/me -H "Authorization: Bearer invalid-token"` → 401 `{"detail":"Token inválido: Not enough segments"}`
+- [x] `curl -i http://localhost:8001/me -H "Authorization: Bearer invalid-token"` → 401 (error genérico tras PM-02C fix)
 - [x] `curl -i http://localhost/api/workspaces/me -H "X-Shared-Secret: changeme"` → 401 `{"detail":"Not authenticated"}`
-- [x] `curl -i http://localhost/api/workspaces/me -H "X-Shared-Secret: changeme" -H "Authorization: Bearer invalid-token"` → 401 `{"detail":"Token inválido: Not enough segments"}`
-
-### Syntax / static validation
-
-- [x] `python -m py_compile` domain/*.py — ✅ Syntax OK
-- [x] `python -m py_compile` ports/*.py — ✅ Syntax OK
-- [x] `python -m py_compile` use_cases/*.py — ✅ Syntax OK
-- [x] `python -m py_compile` adapters/*.py — ✅ Syntax OK
-- [x] `python -m py_compile` api/*.py — ✅ Syntax OK
-- [x] `python -m py_compile` main.py, config.py — ✅ Syntax OK
-
-### Documentación
-
-- [x] `migracion_briefly.md` actualizado con resultado runtime real
-- [x] tasks.md creado
-- [x] Decisión React Native registrada
+- [x] `curl -i http://localhost/api/workspaces/me -H "X-Shared-Secret: changeme" -H "Authorization: Bearer invalid-token"` → 401 (error genérico tras PM-02C fix)
 
 ### Commit selectivo
 
@@ -124,6 +146,8 @@ No iniciar hasta que PM-02 commit sea aprobado.
 |---|---|---|
 | 2026-04-25 | Mobile v1/demo usará React Native, no PWA | Afecta PM-06/Fase 5 |
 | 2026-04-25 | Adapter de persistencia in-memory hasta respuesta académica sobre DynamoDB | Afecta PM-02 |
+| 2026-04-25 | JWT errors genéricos — no filtrar detalles internos PyJWT | Afecta PM-02 |
+| 2026-04-25 | SupabaseJWKSVerifier cacheado como singleton | Afecta PM-02 |
 
 ---
 
@@ -142,48 +166,24 @@ Fecha: 2026-04-25
 
 ---
 
-## Archivos recomendados para commit PM-02
+## Archivos recomendados para commit PM-02C
 
-### Modificados (staged + unstaged)
+### Modificados
 ```
-.env.example
-.gitignore
-apps/backend/workspace-service/app/api/routes.py
-apps/backend/workspace-service/app/config.py
-apps/backend/workspace-service/app/main.py
-apps/backend/workspace-service/app/use_cases/__init__.py
-apps/backend/workspace-service/requirements.txt
-docker-compose.yml
-migracion_briefly.md
-```
-
-### Nuevos (untracked)
-```
-apps/backend/workspace-service/app/adapters/auth/__init__.py
-apps/backend/workspace-service/app/adapters/auth/supabase_jwks_token_verifier.py
-apps/backend/workspace-service/app/adapters/persistence/__init__.py
-apps/backend/workspace-service/app/adapters/persistence/in_memory_repositories.py
 apps/backend/workspace-service/app/api/dependencies.py
+apps/backend/workspace-service/app/adapters/auth/supabase_jwks_token_verifier.py
 apps/backend/workspace-service/app/api/schemas.py
-apps/backend/workspace-service/app/config/__init__.py
 apps/backend/workspace-service/app/config/settings.py
-apps/backend/workspace-service/app/domain/document_metadata.py
-apps/backend/workspace-service/app/domain/errors.py
-apps/backend/workspace-service/app/domain/membership.py
-apps/backend/workspace-service/app/domain/workspace.py
-apps/backend/workspace-service/app/ports/document_repository.py
-apps/backend/workspace-service/app/ports/membership_repository.py
-apps/backend/workspace-service/app/ports/token_verifier.py
-apps/backend/workspace-service/app/ports/workspace_repository.py
-apps/backend/workspace-service/app/use_cases/create_document.py
-apps/backend/workspace-service/app/use_cases/create_workspace.py
-apps/backend/workspace-service/app/use_cases/get_permissions.py
-apps/backend/workspace-service/app/use_cases/get_workspace.py
-apps/backend/workspace-service/app/use_cases/list_documents.py
-apps/backend/workspace-service/app/use_cases/list_workspaces.py
-docs/contexto.md
-docs/migration/PM-02-workspace-auth-plan.md
 tasks.md
+migracion_briefly.md
+.gitattributes
+```
+
+### Nuevos
+```
+apps/backend/workspace-service/tests/__init__.py
+apps/backend/workspace-service/tests/test_auth.py
+apps/backend/workspace-service/requirements-dev.txt
 ```
 
 ### Excluidos
@@ -199,6 +199,6 @@ briefly-architecture-repomix.md
 
 ## Próximo paso
 
-1. Approval humano para commit selectivo PM-02
+1. Approval humano para commit selectivo PM-02C
 2. Ejecutar commit selectivo
 3. PM-03 — Collaboration Service spike

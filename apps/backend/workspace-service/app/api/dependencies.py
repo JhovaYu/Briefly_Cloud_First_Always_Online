@@ -21,6 +21,7 @@ _workspace_repo: WorkspaceRepository | None = None
 _membership_repo: MembershipRepository | None = None
 _document_repo: DocumentRepository | None = None
 _settings: Settings | None = None
+_token_verifier: TokenVerifier | None = None
 
 
 def get_settings() -> Settings:
@@ -52,12 +53,15 @@ def get_document_repo() -> DocumentRepository:
 
 
 def get_token_verifier() -> TokenVerifier:
-    settings = get_settings()
-    return SupabaseJWKSVerifier(
-        jwks_url=settings.SUPABASE_JWKS_URL,
-        issuer=settings.SUPABASE_JWT_ISSUER,
-        audience=settings.SUPABASE_JWT_AUDIENCE,
-    )
+    global _token_verifier
+    if _token_verifier is None:
+        settings = get_settings()
+        _token_verifier = SupabaseJWKSVerifier(
+            jwks_url=settings.SUPABASE_JWKS_URL,
+            issuer=settings.SUPABASE_JWT_ISSUER,
+            audience=settings.SUPABASE_JWT_AUDIENCE,
+        )
+    return _token_verifier
 
 
 async def get_current_user(
