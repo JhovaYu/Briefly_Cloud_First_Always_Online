@@ -29,8 +29,11 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-02A — Workspace Service hygiene + syntax validation
 - [x] PM-02B — Workspace Service runtime validation
 - [x] PM-02C — Workspace Service hardening (tests + fixes)
-- [ ] PM-02 — Commit selectivo pendiente de aprobación humana
-- [ ] PM-03 — Collaboration Service spike
+- [x] PM-02 — Commit selectivo pendiente de aprobación humana
+- [x] PM-03A — Collaboration WebSocket echo + Nginx validation
+- [ ] PM-03B — Collaboration Auth handshake + permisos
+- [ ] PM-03C — pycrdt-websocket base
+- [ ] PM-03D — Yjs sync dos clientes
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
@@ -39,87 +42,98 @@ Este archivo es la bitácora auditable de ejecución.
 
 ---
 
-## PM-02C — Hardening + Tests (2026-04-25)
+## PM-03A — Collaboration WebSocket Echo (2026-04-25)
 
 ### Checklist
 
-- [x] Cachear SupabaseJWKSVerifier como singleton en dependencies.py
-- [x] Generificar errores JWT (no exponer detalles internos PyJWT)
-- [x] Agregar tests automáticos mínimos (pytest + TestClient)
-- [x] Agregar `.gitattributes`
-- [x] Corregir advertencias de deprecación Pydantic V2 (ConfigDict)
-- [x] Validar tests con pytest
-- [x] Actualizar `migracion_briefly.md`
+- [x] Revisar configuración actual Nginx /collab
+- [x] Crear endpoint WebSocket `/collab/echo`
+- [x] Agregar test automático directo con FastAPI TestClient
+- [x] Validar docker compose config
+- [x] Build collaboration-service
+- [x] Levantar collaboration-service + nginx
+- [x] Probar `/collab/health` vía Nginx con X-Shared-Secret
+- [x] Probar WebSocket directo a collaboration-service (TestClient)
+- [x] Probar WebSocket vía Nginx con X-Shared-Secret
+- [x] Verificar que vía Nginx sin X-Shared-Secret falla (401)
+- [x] Actualizar migracion_briefly.md
 - [x] Preparar lista de commit selectivo
 
-### Cambios realizados
+### WebSocket echo implementado
 
-1. **Singleton JWT verifier** — `dependencies.py` ahora cachea `_token_verifier` global, una sola instancia por runtime
-2. **Errores JWT genéricos** — `supabase_jwks_token_verifier.py` ya no filtra `Not enough segments` ni detalles internos de PyJWT
-3. **Tests auth** — 5 tests agregados en `tests/test_auth.py`: health x2, auth negative x3
-4. **`.gitattributes`** — normalización LF para archivos de texto, binary para pyc/png/etc
-5. **Pydantic V2** — `schemas.py` y `settings.py` actualizados a `ConfigDict`
-6. **requirements-dev.txt** — pytest + httpx para tests locales
+`apps/backend/collaboration-service/app/api/routes.py`:
+
+```
+WS /collab/echo
+  1. accept connection
+  2. send {"type":"ready","service":"collaboration-service"}
+  3. receive "ping" → send {"type":"pong"}
+  4. receive any other text → send {"type":"echo","payload":<text>}
+  5. handle disconnect cleanly
+```
 
 ### Validaciones ejecutadas
 
 ```
-python -m pytest apps/backend/workspace-service/tests -v
-→ 5 passed in 0.62s (sin warnings de deprecación)
-python -m py_compile (todos los archivos) → Syntax OK
+python -m pytest apps/backend/collaboration-service/tests -v
+→ 6 passed in 0.50s
+
+WS via Nginx + X-Shared-Secret: ready + ping + hello echo ✅
+WS via Nginx sin X-Shared-Secret: 401 ✅
 ```
 
 ### Commit selectivo
 
 - [ ] Pendiente — awaiting human approval
+
+---
+
+## PM-03 — Collaboration Service Spike
+
+Estado: **PM-03A completado**
+
+División de PM-03:
+
+- PM-03A: WebSocket echo + Nginx ✅
+- PM-03B: Auth handshake + permisos contra Workspace Service (pendiente)
+- PM-03C: pycrdt-websocket base (pendiente)
+- PM-03D: Yjs sync dos clientes (pendiente)
+
+### Decisión registrada
+
+- PM-03A solo valida WebSocket echo. JWT/permisos se difieren a PM-03B.
+- No usar JWT crudo en query string como solución final.
+- PM-03B debe evaluar first-message auth o short-lived collaboration ticket.
+
+---
+
+## PM-02C — Hardening + Tests (2026-04-25)
+
+- [x] Singleton SupabaseJWKSVerifier en dependencies.py
+- [x] Errores JWT genéricos (no filtrar detalles PyJWT)
+- [x] 5 tests pytest workspace-service (5 passed)
+- [x] `.gitattributes`
+- [x] Pydantic V2 ConfigDict fixes
+- [x] migracion_briefly.md actualizado
 
 ---
 
 ## PM-02B — Runtime Validation (2026-04-25)
 
-### Preflight
-
-- [x] Confirmar Docker Desktop activo
-- [x] Ejecutar `docker version`
-- [x] Ejecutar `docker compose config`
-- [x] Ejecutar `git status --short --branch`
-- [x] Confirmar que no quedan `.pyc` trackeados
-- [x] Confirmar que `.claude/`, `.mcp.json`, `briefly-architecture-repomix.md` no serán commiteados
-
-### Runtime Docker
-
-- [x] `docker compose config` — ✅ Syntax validated OK
-- [x] `docker compose build workspace-service` — ✅ Build successful
-- [x] `docker compose up -d workspace-service nginx` — ✅ All containers up
-- [x] `docker compose ps` — ✅ 6/6 healthy
-
-### Healthchecks
-
-- [x] `curl http://localhost:8001/health` → `{"status":"ok","service":"workspace-service"}`
-- [x] `curl http://localhost:8001/healthz` → `{"status":"ok","service":"workspace-service"}`
-- [x] `curl http://localhost/api/workspaces/health -H "X-Shared-Secret: changeme"` → `{"status":"ok","service":"workspace-service"}`
-- [x] `curl http://localhost/api/workspaces/health` (sin secret) → `{"error":"unauthorized"}` 401
-
-### Auth negative tests
-
-- [x] `curl -i http://localhost:8001/me` → 401 `{"detail":"Not authenticated"}`
-- [x] `curl -i http://localhost:8001/me -H "Authorization: Bearer invalid-token"` → 401 (error genérico tras PM-02C fix)
-- [x] `curl -i http://localhost/api/workspaces/me -H "X-Shared-Secret: changeme"` → 401 `{"detail":"Not authenticated"}`
-- [x] `curl -i http://localhost/api/workspaces/me -H "X-Shared-Secret: changeme" -H "Authorization: Bearer invalid-token"` → 401 (error genérico tras PM-02C fix)
-
-### Commit selectivo
-
-- [ ] Pendiente — awaiting human approval
+- [x] Docker Desktop activo
+- [x] docker compose config OK
+- [x] docker compose build workspace-service OK
+- [x] 6/6 containers healthy
+- [x] Healthchecks OK
+- [x] Auth negative tests 401 OK
 
 ---
 
 ## PM-02A — Repo Hygiene (2026-04-25)
 
-- [x] `.gitignore` actualizado (Python caches, .claude/, .mcp.json, repomix-output.txt)
+- [x] `.gitignore` actualizado
 - [x] `.pyc` y `__pycache__` removidos del tracking
 - [x] Arquitectura hexagonal verificada
-- [x] JWT verifier (ES256 + JWKS + issuer/audience/exp) verificado
-- [x] Documentación actualizada
 
 ---
 
@@ -132,22 +146,15 @@ python -m py_compile (todos los archivos) → Syntax OK
 
 ---
 
-## PM-03 — Collaboration Service Spike
-
-Estado: **Pendiente**
-
-No iniciar hasta que PM-02 commit sea aprobado.
-
----
-
 ## Decisiones registradas
 
 | Fecha | Decisión | Impacto |
 |---|---|---|
 | 2026-04-25 | Mobile v1/demo usará React Native, no PWA | Afecta PM-06/Fase 5 |
-| 2026-04-25 | Adapter de persistencia in-memory hasta respuesta académica sobre DynamoDB | Afecta PM-02 |
+| 2026-04-25 | Adapter de persistencia in-memory hasta respuesta académica | Afecta PM-02 |
 | 2026-04-25 | JWT errors genéricos — no filtrar detalles internos PyJWT | Afecta PM-02 |
 | 2026-04-25 | SupabaseJWKSVerifier cacheado como singleton | Afecta PM-02 |
+| 2026-04-25 | No usar JWT crudo en query string — PM-03B evaluará first-message auth | Afecta PM-03B |
 
 ---
 
@@ -166,24 +173,20 @@ Fecha: 2026-04-25
 
 ---
 
-## Archivos recomendados para commit PM-02C
+## Archivos recomendados para commit PM-03A
 
 ### Modificados
 ```
-apps/backend/workspace-service/app/api/dependencies.py
-apps/backend/workspace-service/app/adapters/auth/supabase_jwks_token_verifier.py
-apps/backend/workspace-service/app/api/schemas.py
-apps/backend/workspace-service/app/config/settings.py
+apps/backend/collaboration-service/app/api/routes.py
 tasks.md
 migracion_briefly.md
-.gitattributes
 ```
 
 ### Nuevos
 ```
-apps/backend/workspace-service/tests/__init__.py
-apps/backend/workspace-service/tests/test_auth.py
-apps/backend/workspace-service/requirements-dev.txt
+apps/backend/collaboration-service/requirements-dev.txt
+apps/backend/collaboration-service/tests/__init__.py
+apps/backend/collaboration-service/tests/test_ws_echo.py
 ```
 
 ### Excluidos
@@ -199,6 +202,6 @@ briefly-architecture-repomix.md
 
 ## Próximo paso
 
-1. Approval humano para commit selectivo PM-02C
+1. Approval humano para commit selectivo PM-03A
 2. Ejecutar commit selectivo
-3. PM-03 — Collaboration Service spike
+3. PM-03B — Collaboration Auth handshake + permisos contra Workspace Service

@@ -820,7 +820,7 @@ Validar que el sistema sobrevive la demo de 2 horas.
 |---|---|---|---|
 | PM-01 | Fase 0 | Foundation local FastAPI + Docker + Nginx | **Completado** ✅ 2026-04-24 |
 | PM-02 | Fase 1 | Workspace Service + Supabase JWT | **Completado** ✅ 2026-04-25 |
-| PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | Pendiente |
+| PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅ 2026-04-25, PM-03B-D Pendiente |
 | PM-04 | Fase 3 | Planning REST + React Query | Pendiente |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
@@ -1147,6 +1147,44 @@ Pendientes:
   - Approval humano para commit selectivo PM-02C
 ```
 
+### Entrada 005
+
+```txt
+Fecha: 2026-04-25
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03A — Collaboration WebSocket Echo + Nginx Validation
+
+Resumen:
+  WebSocket echo endpoint implementado en /collab/echo. 6 tests pytest agregados.
+  Docker build OK, runtime OK. Nginx valida X-Shared-Secret en WebSocket.
+  WebSocket sin secret rechazado con 401.
+
+Archivos modificados:
+  apps/backend/collaboration-service/app/api/routes.py — WS /collab/echo
+
+Archivos creados:
+  apps/backend/collaboration-service/requirements-dev.txt
+  apps/backend/collaboration-service/tests/__init__.py
+  apps/backend/collaboration-service/tests/test_ws_echo.py
+
+Comandos ejecutados:
+  docker compose config — ✅ Syntax OK
+  docker compose build collaboration-service — ✅ Build OK
+  docker compose up -d collaboration-service nginx — ✅ Containers up
+  python -m pytest apps/backend/collaboration-service/tests -v — ✅ 6 passed
+  WS via Nginx + X-Shared-Secret — ✅ ready + ping + echo OK
+  WS via Nginx sin X-Shared-Secret — ✅ 401 rejected
+
+Decisión registrada:
+  No usar JWT crudo en query string como solución final.
+  PM-03B evaluará first-message auth o short-lived collaboration ticket.
+  PM-03 dividido en PM-03A (WS echo), PM-03B (auth), PM-03C (pycrdt), PM-03D (Yjs sync).
+
+Pendientes:
+  - Approval humano para commit selectivo PM-03A
+  - PM-03B: Auth handshake + permisos contra Workspace Service
+```
+
 ---
 
 ## 10. Estado global
@@ -1155,7 +1193,7 @@ Pendientes:
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | Pendiente |
+| Collaboration pycrdt | PM-03A ✅, PM-03B-D Pendiente |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
