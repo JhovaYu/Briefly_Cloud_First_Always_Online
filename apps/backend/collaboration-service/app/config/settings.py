@@ -13,3 +13,6 @@ class Settings(BaseSettings):
     COLLAB_AUTH_TIMEOUT_SECONDS: float = 5.0
     ENABLE_EXPERIMENTAL_CRDT_ENDPOINT: bool = False
     TICKET_TTL_SECONDS: int = 60
+    DOCUMENT_STORE_TYPE: str = "memory"  # "memory" | "local" | "disabled"
+    DOCUMENT_STORE_PATH: str = ".data/collab-snapshots"
+    MAX_SNAPSHOT_BYTES: int = 52_428_800  # 50 MB

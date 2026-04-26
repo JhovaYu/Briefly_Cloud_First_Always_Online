@@ -1494,8 +1494,93 @@ En desarrollo local el smoke usa `SHARED_SECRET=changeme` + `HeaderInjectingWebS
 En producción el browser no setea ese header — CloudFront lo inyecta automáticamente.
 
 ### Contrato para siguiente iteración:
-- PM-03D.5 COMPLETO — listo para revisión APEX PRIME
-- PM-03E: Persistencia S3/DynamoDB (siguiente fase, no bloqueado)
+- PM-03E.1.1 COMPLETO — listo para revisión APEX
+- PM-03E.2: Periodic timer (debounce) para rooms huérfanas sin clientes
+
+---
+
+## PM-03E.1.1 — Local CRDT persistence lifecycle hardening (2026-04-26) ✅
+
+### Implementado:
+- DocumentStore port + InMemory + LocalFile adapters ✅
+- PycrdtRoomManager con `auto_clean_rooms=False` + locks ✅
+- `track_channel()` + `handle_disconnect()` para cleanup on disconnect ✅
+- ASGIServer(on_disconnect=on_disconnect) wireado ✅
+- Snapshot save antes de delete en cleanup ✅
+- Shutdown snapshot save en lifespan ✅
+- 14 new tests + 88 total PASS ✅
+
+### Lifecycle audit:
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Quién crea la room? | `WebsocketServer.get_room()` internamente en `serve()` — NO interceptado |
+| ¿Snapshot se carga al crear? | NO — se carga en close_room/shutdown |
+| ¿on_disconnect trae room_key? | NO — solo `msg`, no scope |
+| ¿room.clients actualizado sync? | SÍ — removal síncrono en `finally` |
+
+### Solución: channel tracking
+
+- `on_connect`: `track_channel(id(msg), room_key)` después de auth válida
+- `on_disconnect`: `handle_disconnect(id(msg))` → lookup → if clients==0 → save+delete
+- Limitación: `id(msg)` no es Channel real — para PM-03E.2 timer
+
+### Snapshot lifecycle:
+
+| Evento | ¿Guardado? |
+|---|---|
+| Room creada | NO |
+| Último cliente disconnect | SÍ |
+| Service shutdown | SÍ |
+| close_room() manual | SÍ |
+
+### Riesgos documentados:
+1. Room orphan sin disconnect: no se guarda hasta shutdown (resolverá PM-03E.2 timer)
+2. `id(msg)` como channel_id: no es Channel real, solo tracking local
+
+### Contrato para siguiente iteración:
+- PM-03E.1.1 COMPLETO — listo para revisión APEX
+- PM-03E.2: Periodic timer para rooms huérfanas
+
+---
+
+## PM-03E.1.2 — Snapshot restore integration fix (2026-04-26) ✅
+
+### Bug confirmado
+
+PM-03E.1.1 decía que restore "NO funciona" y que estaría en PM-03E.2. PERO el código de `_ensure_room()` YA tenía la lógica de restore implementada. La documentación contradecía la realidad.
+
+### Análisis técnico real
+
+`WebsocketServer.get_room()` — si la room ya existe en `server.rooms`, retorna la existente (no recrea). Si preinsertamos la room con snapshot en `server.rooms`, pycrdt la reutiliza.
+
+**Fix en on_connect:**
+```python
+await manager._ensure_room(workspace_id, document_id)  # preinsert room con snapshot
+```
+
+Esto asegura que cuando pycrdt hace `get_room()` internamente, la room YA está en `server.rooms` con el snapshot aplicado.
+
+### Implementado:
+- `on_connect`: llama `await _ensure_room()` después de auth válida ✅
+- `_ensure_room()`: carga snapshot desde store, aplica a ydoc, inserta en `server.rooms` ✅
+- 11 new snapshot restore tests ✅
+- 99 total PASS ✅
+
+### Snapshot lifecycle (correcto):
+
+| Evento | ¿Guardado? |
+|---|---|
+| Room creada en on_connect | **SÍ — snapshot cargado** |
+| Último cliente disconnect | SÍ |
+| Service shutdown | SÍ |
+| close_room() manual | SÍ |
+
+### Contrato para siguiente iteración:
+- PM-03E.1.2 COMPLETO — listo para revisión APEX
+- PM-03E.2: Periodic timer para rooms huérfanas sin disconnect
+
+---
 
 ### Hallazgo PM-03D.4:
 - **PM-03D.2 fue falso negativo.** El smoke anterior usó `ws` raw + parseo manual del protocolo yjs.

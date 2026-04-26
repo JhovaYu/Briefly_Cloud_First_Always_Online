@@ -25,21 +25,23 @@ from app.use_cases.validate_collaboration_ticket import (
 _room_manager = None
 
 
-def get_room_manager():
+def get_room_manager(document_store=None):
     global _room_manager
     if _room_manager is None:
         from app.adapters.pycrdt_room_manager import PycrdtRoomManager
-        _room_manager = PycrdtRoomManager()
+        _room_manager = PycrdtRoomManager(document_store=document_store)
     return _room_manager
 
 
-def create_crdt_app() -> tuple[Any, Any]:
+def create_crdt_app(document_store=None) -> tuple[Any, Any]:
     """Create the CRDT ASGI app and return (app, room_manager).
 
     This creates a separate ASGI app mounted at /collab/crdt/*
     in the main app.
     """
-    manager = get_room_manager()
+    manager = get_room_manager(document_store)
+    if document_store is not None:
+        manager.set_document_store(document_store)
     ws_server = manager.server
 
     async def on_connect(msg: dict, scope: dict) -> bool:
@@ -81,11 +83,24 @@ def create_crdt_app() -> tuple[Any, Any]:
                 document_id=document_id,
                 ticket_store=ticket_store,
             )
+            # Pre-create room with snapshot loaded (if any) BEFORE pycrdt calls get_room()
+            # This ensures the ydoc has any previously saved state
+            await manager._ensure_room(workspace_id, document_id)
+            # Track this connection's room so on_disconnect can find it
+            room_key = f"{workspace_id}:{document_id}"
+            # channel_id is in msg for websocket.connect
+            channel_id = id(msg)
+            manager.track_channel(channel_id, room_key)
             return False  # accept
         except TicketInvalid:
             return True  # reject
 
-    asgi_server = ASGIServer(ws_server, on_connect=on_connect)
+    async def on_disconnect(msg: dict) -> None:
+        """Handle client disconnect: save snapshot if last client, then cleanup."""
+        channel_id = id(msg)
+        await manager.handle_disconnect(channel_id)
+
+    asgi_server = ASGIServer(ws_server, on_connect=on_connect, on_disconnect=on_disconnect)
     return asgi_server, manager
 
 

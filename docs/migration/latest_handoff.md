@@ -1,144 +1,100 @@
 # Latest Handoff
 
 ## Fase
-PM-03D.5 (2026-04-26 retry) — Nginx/reconnect hardening — JWT refrescado, todos los tests PASS
+PM-03E.1.2 (2026-04-26) — Snapshot restore integration fix
 
 ## Contexto previo relevante
 
 - **PM-03A:** WebSocket echo endpoint `/collab/echo`
 - **PM-03B:** First-message auth estable en `/collab/{ws_id}/{doc_id}`
 - **PM-03C:** pycrdt-websocket base experimental con feature flag
-- **PM-03D:** Ticket auth (sistema de tickets opacos) implementado
-- **PM-03D.4:** SYNC PASS — bidirectional Yjs sync via WebsocketProvider directo a :8002
-- **PM-03D.5 intento previo:** Todos los tests funcionaron pero fallaron en JWT expiry
+- **PM-03D:** Ticket auth + Yjs bidirectional sync verificado
+- **PM-03D.5:** Nginx/reconnect hardening — PASS
+- **PM-03E.1.1:** Local CRDT persistence lifecycle hardening (on_disconnect wireado)
 
-## Objetivo ejecutado
+## Bug confirmado y corregido
 
-PM-03D.5 retry con JWT fresco:
-1. Smoke directo contra `collaboration-service` :8002
-2. Smoke vía Nginx `/collab/crdt`
-3. Reconnect directo
-4. Reconnect vía Nginx
-5. Tests Python + Docker build
+**PM-03E.1.1 tenía una contradicción:** Decía que "room se crea sin snapshot" y que restore "sería en PM-03E.2", pero `_ensure_room()` YA tenía código de restore. La documentación contradecía la implementación.
 
-## Smoke directo
+**Análisis real:**
+- `WebsocketServer.get_room()` retorna room existente si ya existe en `self.rooms` — **no recrea**
+- Si preinsertamos la room con snapshot en `server.rooms`, `get_room()` la retorna sin crear una nueva
+- El restore FUNCIONA si llamamos `_ensure_room()` en `on_connect` ANTES de que pycrdt llame `get_room()`
 
-```
-Ticket endpoint:   PASS
-Provider A conn:  PASS
-Provider B conn:  PASS
-A -> B sync:      PASS
-B -> A sync:      PASS
+**Fix aplicado:**
+En `on_connect`, después de validar ticket, se llama `await manager._ensure_room(workspace_id, document_id)` para preinsertar la room con snapshot cargado antes de que pycrdt haga `get_room()`.
 
-SYNC PASS: bidirectional text sync verified
-```
+## Snapshot Lifecycle (correcto)
 
-**Entorno:**
-```
-COLLAB_BASE_URL=http://localhost:8002
-COLLAB_WS_BASE_URL=ws://localhost:8002/collab/crdt
-```
+| Evento | ¿Snapshot guardado? |
+|---|---|
+| Room creada (get_room) | **SÍ si preinsertada via on_connect** |
+| Último cliente disconnect | SÍ — vía handle_disconnect |
+| Service shutdown | SÍ — lifespan shutdown itera server.rooms |
+| close_room() manual | SÍ — save+delete |
 
-## Smoke vía Nginx
+**Ruta de restore en producción:**
+1. Cliente conecta → `on_connect` → `validate_collaboration_ticket()` → `await _ensure_room(ws, doc)` → room preinsertada en `server.rooms` con snapshot
+2. pycrdtinternally calls `server.get_room(room_key)` → finds room already in `server.rooms` → returns it (no new YRoom created)
+3. YRoom.ydoc ya tiene el snapshot aplicado
+4. Cliente recibe sync con contenido restaurado
 
-```
-Ticket endpoint:   PASS
-Provider A conn:  PASS
-Provider B conn:  PASS
-A -> B sync:      PASS
-B -> A sync:      PASS
-
-SYNC PASS: bidirectional text sync via Nginx verified
-```
-
-**Entorno:**
-```
-COLLAB_BASE_URL=http://localhost
-COLLAB_WS_BASE_URL=ws://localhost/collab/crdt
-SHARED_SECRET=changeme
-```
-
-**Archivo:** `yjs-sync-smoke-nginx.mjs` (variante dedicada para Nginx con `X-Shared-Secret` injection en ticket fetch y WebSocket)
-
-**Nota de arquitectura:** El archivo base `yjs-sync-smoke.mjs` NO funciona en modo Nginx debido a dos bugs conocidos:
-1. `WORKSPACE_SERVICE_URL` derivation falla cuando `COLLAB_BASE_URL=http://localhost` (el replace `:8002→:8001` no matchea)
-2. El fetch del ticket no inyecta `X-Shared-Secret` header (Nginx lo requiere para `/collab/*`)
-
-La variante `yjs-sync-smoke-nginx.mjs` resuelve ambos. Ambos bugs están documentados y no afectan al flujo de producción (el cliente real usa CloudFront que inyecta el header).
-
-## Reconnect directo
+## Tests
 
 ```
-=== Reconnect Test ===
-Destroying Provider B...
-Fetching fresh ticket B2 for same room...
-Provider B2 reconnected: PASS
-B2 sees current state: PASS (textB2="Hello from B")
-B2 -> A (reconnect): PASS (textA="Hello from B2")
-
-Provider B2 reconnect: PASS
+python -m pytest apps/backend/collaboration-service/tests -v
+→ 99 passed in 2.74s ✅
+  - test_document_store.py: 19 tests
+  - test_room_lifecycle.py: 14 tests
+  - test_snapshot_restore.py: 11 tests (NEW in PM-03E.1.2)
+  - test_ws_crdt.py: 15 tests
+  - test_ws_auth.py: 15 tests
+  - test_collab_tickets.py: 19 tests
+  - test_ws_echo.py: 6 tests
 ```
 
-## Reconnect vía Nginx
-
-```
-=== Reconnect Test via Nginx ===
-Destroying Provider B...
-Fetching fresh ticket B2 for same room (via Nginx)...
-Provider B2 reconnected: PASS
-B2 sees current state: PASS (textB2="Hello from B")
-B2 -> A (reconnect): PASS (textA="Hello from B2")
-
-Provider B2 reconnect: PASS
-```
+**Snapshot restore tests cover:**
+- save + delete + recreate + load cycle
+- room with existing snapshot loads content
+- room without snapshot creates empty doc
+- two rooms maintain independent snapshots
+- corrupt snapshot does not crash service
+- close_room saves snapshot before deletion
 
 ## Validaciones ejecutadas
 
 ```
-python -m pytest apps/backend/collaboration-service/tests -v
-→ 55 passed in 2.64s ✅
+python -m py_compile (todos los archivos modificados/nuevos)
+→ All compile OK ✅
 
-python -m py_compile routes.py crdt_routes.py main.py settings.py
-→ ALL_COMPILED_OK ✅
-
-docker compose config → Validated OK ✅
+docker compose config → Validated ✅
 docker compose build collaboration-service → Built OK ✅
-
-Health checks:
-curl http://localhost:8002/health → 200 ✅
-curl http://localhost/collab/health -H "X-Shared-Secret: changeme" → 200 ✅
-curl http://localhost/collab/health → 401 ✅
-curl http://localhost/collab/health -H "X-Shared-Secret: wrong" → 401 ✅
 ```
-
-## Resultado Git
-
-```
- M apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
- M docs/migration/PM-03D-yjs-sync-notes.md
- M docs/migration/latest_handoff.md
- M migracion_briefly.md
- M tasks.md
-?? apps/backend/collaboration-service/smoke/yjs-sync-smoke-nginx.mjs
-?? auditaciones_comandos.txt
-```
-
-## Riesgos / bloqueos
-
-1. **JWT expirará nuevamente** — El `SUPABASE_TEST_JWT` actual expira. Necesitará refresh en futuras iteraciones.
 
 ## Contrato para la siguiente iteración
 
-**PM-03E:** Persistencia S3/DynamoDB — siguiente fase activa. PM-03D.5 completo y verificado.
+**PM-03E.2: Periodic timer (debounce)**
 
-**PM-03D.5 listo para revisión APEX PRIME.**
+- Implementar tarea periódica (30s) que escanee `server.rooms` y persista las que tengan `clients == set`
+- Detecta orphan rooms (cliente crash sin disconnect)
+- Mejora `id(msg)` → Channel real detection si es viable
+
+**PM-03E.1.2 listo para revisión APEX.**
 
 ## Archivos recomendados para commit
 
 ```
-A apps/backend/collaboration-service/smoke/yjs-sync-smoke-nginx.mjs
-M apps/backend/collaboration-service/smoke/yjs-sync-smoke.mjs
-M docs/migration/PM-03D-yjs-sync-notes.md
+A apps/backend/collaboration-service/app/adapters/in_memory_document_store.py
+A apps/backend/collaboration-service/app/adapters/local_file_document_store.py
+A apps/backend/collaboration-service/app/ports/document_store.py
+A apps/backend/collaboration-service/tests/test_document_store.py
+A apps/backend/collaboration-service/tests/test_room_lifecycle.py
+A apps/backend/collaboration-service/tests/test_snapshot_restore.py
+M apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
+M apps/backend/collaboration-service/app/api/crdt_routes.py
+M apps/backend/collaboration-service/app/config/settings.py
+M apps/backend/collaboration-service/app/main.py
+A docs/migration/PM-03E-persistence-design.md
 M docs/migration/latest_handoff.md
 M migracion_briefly.md
 M tasks.md
@@ -147,8 +103,14 @@ M tasks.md
 ## Archivos excluidos
 
 ```
-apps/backend/collaboration-service/smoke/node_modules/
-apps/backend/collaboration-service/smoke/package-lock.json (en .gitignore)
 auditaciones_comandos.txt
-.env, *.log, __pycache__/, *.pyc
+.env, *.log, __pycache__/, *.pyc, node_modules/
+.claude/
 ```
+
+## Riesgos restantes
+
+1. **`id(msg)` como channel_id** — No es Channel real de pycrdt. Limitado para debugging. Suficiente para PM-03E.1.x.
+2. **Room orphan sin disconnect** — Cliente crash sin disconnect = room sin snapshot hasta shutdown. PM-03E.2 timer lo resolverá.
+3. **`DOCUMENT_STORE_TYPE=local` en Docker** — Sin bind mount de `.data/collab-snapshots`, snapshots se pierden en restart.
+4. **No periodic timer todavía** — Snapshot solo en disconnect o shutdown. Timer 30s es PM-03E.2.

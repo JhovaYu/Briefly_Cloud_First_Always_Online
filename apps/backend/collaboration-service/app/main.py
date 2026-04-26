@@ -24,6 +24,13 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(0.1)
     yield
     if _room_manager is not None:
+        # Save snapshots for all active rooms before shutdown
+        for room_key, room in _room_manager.server.rooms.items():
+            if room.ydoc is not None:
+                snapshot = room.ydoc.get_update()
+                store = _room_manager._document_store
+                if store is not None and snapshot:
+                    store.save(room_key, snapshot)
         await _room_manager.server.stop()
 
 
@@ -36,7 +43,17 @@ app.include_router(routes.router)
 # It is NOT safe for production exposure until PM-03D/PM-03E.
 _settings = Settings()
 if _settings.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:
-    crdt_app, manager = create_crdt_app()
+    document_store = None
+    if _settings.DOCUMENT_STORE_TYPE == "memory":
+        from app.adapters.in_memory_document_store import InMemoryDocumentStore
+        document_store = InMemoryDocumentStore()
+    elif _settings.DOCUMENT_STORE_TYPE == "local":
+        from app.adapters.local_file_document_store import LocalFileDocumentStore
+        document_store = LocalFileDocumentStore(root=_settings.DOCUMENT_STORE_PATH)
+    # DOCUMENT_STORE_TYPE="disabled" means no persistence
+    crdt_app, manager = create_crdt_app(document_store)
+    if document_store is not None:
+        manager.set_max_snapshot_bytes(_settings.MAX_SNAPSHOT_BYTES)
     app.mount("/collab/crdt", crdt_app, name="crdt-ws")
     _room_manager = manager
 

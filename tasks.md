@@ -34,6 +34,9 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03C.1 — Security hardening del endpoint CRDT experimental
 - [x] PM-03D — Ticket auth + Yjs bidirectional sync COMPLETO (PM-03D.4: SYNC PASS)
 - [ ] PM-03D.5 — Nginx/reconnect hardening (implementado, no validado por JWT expiry)
+- [x] PM-03E.1.1 — Local CRDT persistence lifecycle hardening (2026-04-26)
+- [x] PM-03E.1.2 — Snapshot restore integration fix (2026-04-26)
+- [ ] PM-03E.2 — Periodic timer/debounce
 - [ ] PM-03E — Persistencia S3/DynamoDB
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
@@ -119,7 +122,7 @@ PM-03D.4 demostró que usando `WebsocketProvider` (el cliente correcto), pycrdt 
 
 ---
 
-## PM-03D.5 — Nginx/reconnect hardening (2026-04-26)
+## PM-03D.5 — Nginx/reconnect hardening (2026-04-26) ✅
 
 ### Checklist
 
@@ -176,7 +179,58 @@ PM-03E: Persistencia S3/DynamoDB (siguiente fase, no bloqueado).
 
 ---
 
-## PM-03D.4 — Smoke correcto con WebsocketProvider (2026-04-26)
+## PM-03E.1.1 — Local CRDT persistence lifecycle hardening (2026-04-26) ✅
+
+### Checklist
+
+- [x] Git status check — sin archivos inesperados
+- [x] Auditoría lifecycle real — who creates room, on_disconnect gap, snapshot lifecycle
+- [x] Wire on_disconnect callback al PycrdtRoomManager
+- [x] track_channel() + handle_disconnect() en PycrdtRoomManager
+- [x] Channel-to-room tracking dict _channel_to_room
+- [x] ASGIServer(on_disconnect=on_disconnect) wireado en crdt_routes.py
+- [x] Tests de lifecycle: 14 new tests PASS
+- [x] All tests: 88 PASS
+- [x] py_compile todos los archivos: OK
+- [x] docker compose config: OK
+- [x] docker compose build collaboration-service: OK
+- [x] Actualizar PM-03E-persistence-design.md
+- [x] Actualizar tasks.md
+- [x] Actualizar migracion_briefly.md
+
+### Lifecycle audit findings
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Quién crea la room? | `WebsocketServer.get_room()` llamado internamente en `serve()`. El manager NO intercepta creación. |
+| ¿La room se crea con snapshot? | NO — snapshot se carga en close_room/shutdown |
+| ¿on_disconnect trae room_key? | NO — `on_disconnect(msg)` solo recibe mensaje, no scope/path |
+| ¿room.clients actualizado en on_disconnect? | SÍ — removal síncrono en `finally` de `serve()` |
+| ¿Existe método público para cleanup? | SÍ — `close_room()` + `_save_and_cleanup()` |
+
+### Decisión: on_disconnect wireado vía channel tracking
+
+- `track_channel(channel_id, room_key)` en `on_connect` después de auth válida
+- `handle_disconnect(channel_id)` en `on_disconnect` — lookup, check clients==0, save+delete
+- Limitación: `id(msg)` como channel_id — no es el objeto Channel real
+
+### Snapshot lifecycle
+
+| Evento | ¿Snapshot guardado? |
+|---|---|
+| Room creada (get_room) | NO — snapshot se carga en close_room/shutdown |
+| Último cliente disconnect | SÍ — vía handle_disconnect |
+| Service shutdown | SÍ — lifespan shutdown itera server.rooms |
+| close_room() llamado | SÍ — save+delete |
+
+### Contrato para siguiente iteración
+
+PM-03E.1.1 COMPLETO — listo para revisión APEX.
+PM-03E.2: Periodic timer (debounce) para rooms huérfanas sin clientes.
+
+---
+
+## PM-03D.4 — Smoke correcto con WebsocketProvider (2026-04-26) ✅
 
 ### Checklist
 
@@ -228,7 +282,7 @@ apps/backend/collaboration-service/smoke/
 
 ---
 
-## PM-03D — Yjs sync dos clientes con auth viable (2026-04-25)
+## PM-03D — Yjs sync dos clientes con auth viable (2026-04-25) ✅
 
 ### Checklist
 
