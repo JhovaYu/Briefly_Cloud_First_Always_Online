@@ -820,7 +820,7 @@ Validar que el sistema sobrevive la demo de 2 horas.
 |---|---|---|---|
 | PM-01 | Fase 0 | Foundation local FastAPI + Docker + Nginx | **Completado** ✅ 2026-04-24 |
 | PM-02 | Fase 1 | Workspace Service + Supabase JWT | **Completado** ✅ 2026-04-25 |
-| PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅ 2026-04-25, PM-03B-D Pendiente |
+| PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
 | PM-04 | Fase 3 | Planning REST + React Query | Pendiente |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
@@ -1185,6 +1185,54 @@ Pendientes:
   - PM-03B: Auth handshake + permisos contra Workspace Service
 ```
 
+### Entrada 006
+
+```txt
+Fecha: 2026-04-25
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03B — Collaboration Auth Handshake + Workspace Permissions
+
+Resumen:
+  First-message auth implementado. WS /collab/{workspace_id}/{document_id} requiere primer mensaje
+  JSON con token JWT. Collaboration Service llama internamente a Workspace Service via httpx
+  para validar permisos. Arquitectura hexagonal completa. 16 tests passing.
+
+Archivos modificados:
+  apps/backend/collaboration-service/app/api/routes.py — WS endpoint + auth logic
+  apps/backend/collaboration-service/requirements.txt — agregado httpx>=0.27.0
+
+Archivos creados:
+  apps/backend/collaboration-service/app/config/__init__.py
+  apps/backend/collaboration-service/app/config/settings.py
+  apps/backend/collaboration-service/app/domain/__init__.py
+  apps/backend/collaboration-service/app/domain/errors.py
+  apps/backend/collaboration-service/app/ports/__init__.py
+  apps/backend/collaboration-service/app/ports/workspace_permissions.py
+  apps/backend/collaboration-service/app/adapters/__init__.py
+  apps/backend/collaboration-service/app/adapters/workspace_client.py
+  apps/backend/collaboration-service/app/use_cases/__init__.py
+  apps/backend/collaboration-service/app/use_cases/authenticate_collaboration.py
+  apps/backend/collaboration-service/tests/test_ws_auth.py
+
+Comandos ejecutados:
+  python -m py_compile (todos archivos) — ✅ Syntax OK
+  docker compose config — ✅ Syntax OK
+  docker compose build collaboration-service — ✅ Build OK
+  docker compose up -d collaboration-service nginx — ✅ Containers healthy
+  python -m pytest apps/backend/collaboration-service/tests -v — ✅ 16 passed
+  WS via Nginx: /collab/echo ✅, /collab/{id}/{id} sin secret ✅, sin auth ✅, auth inválido ✅
+
+Decisiones registradas:
+  First-message auth — no JWT en query string
+  Collaboration delega validación permisos a Workspace Service via httpx
+  Close codes: 4400 (invalid message), 4003 (auth/perm denied), 1011 (upstream error)
+  No se implementa pycrdt todavía
+
+Pendientes:
+  - Approval humano para commit selectivo PM-03B
+  - PM-03C: pycrdt-websocket base
+```
+
 ---
 
 ## 10. Estado global
@@ -1193,7 +1241,7 @@ Pendientes:
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B-D Pendiente |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
