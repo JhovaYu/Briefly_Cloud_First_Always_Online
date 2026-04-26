@@ -1,0 +1,14 @@
+{
+  "name": "collab-smoke",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Yjs smoke test for collaboration-service CRDT sync via WebsocketProvider",
+  "scripts": {
+    "smoke": "node yjs-sync-smoke.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.14.0",
+    "y-websocket": "^1.5.0",
+    "yjs": "^13.6.0"
+  }
+}

@@ -32,9 +32,8 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03B.1 — Auth test hardening (close codes + positive test)
 - [x] PM-03C — pycrdt-websocket base
 - [x] PM-03C.1 — Security hardening del endpoint CRDT experimental
-- [x] PM-03D — Ticket auth infrastructure (PARTIAL: ticket + WS connection work, Yjs sync BLOCKED by protocol incompatibility)
-- [ ] PM-03D.3 — Decision gate: estrategia realtime (pycrdt vs yjs vs alternativa)
-- [ ] PM-03E — Persistencia (BLOQUEADO hasta decisión realtime)
+- [x] PM-03D — Ticket auth + Yjs bidirectional sync COMPLETO (PM-03D.4: SYNC PASS)
+- [ ] PM-03E — Persistencia S3/DynamoDB
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
@@ -105,25 +104,69 @@ El ticket endpoint requiere Supabase JWT real.
 - JWT no impreso, tickets enmascarados
 - Feature flag pasado correctamente por Docker Compose
 
-### Qué falló
+### Hallazgo PM-03D.2
 
-**Yjs bidirectional sync: BLOQUEADO**
+**SYNC REPORTADO COMO "BLOQUEADO" — FUE FALSO NEGATIVO**
 
-pycrdt-websocket usa `[SYNC, SYNC_KIND_fixed, len, data]`
-yjs/y-protocols espera `[SYNC, syncKind_varuint, stateVector_varuint8array]`
-
-El sync de Y.Doc entre pycrdt server y yjs client NO funciona.
+PM-03D.2 usó `ws` raw + parseo manual de bytes del protocolo yjs.
+El resultado fue un falso negativo porque `ws` raw no implementa el protocolo de sync de Yjs.
+PM-03D.4 demostró que usando `WebsocketProvider` (el cliente correcto), pycrdt y yjs SON compatibles.
 
 ### Tests
 
-52 passed, 3 failed (3 fallas por env contamination: ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true en shell hace fallar tests que esperan default False)
+55 passed (las 3 fallas originales fueron por env contamination, resueltas posteriormente)
+
+---
+
+## PM-03D.4 — Smoke correcto con WebsocketProvider (2026-04-26)
+
+### Checklist
+
+- [x] Limpiar smoke directory (eliminar nested dirs, crear .gitignore, fix package.json)
+- [x] Reescribir smoke con WebsocketProvider (y-websocket, no raw ws)
+- [x] Corregir WS_BASE URL (`ws://localhost:8002/collab/crdt`, no solo `ws://localhost:8002`)
+- [x] Auto-crear workspace/document si no existen (via Workspace Service API)
+- [x] Ejecutar smoke directo a puerto 8002 (sin Nginx)
+- [x] Verificar sync bidireccional A→B y B→A
+- [x] Ejecutar Python tests: 55 passed
+- [x] Verificar Docker services running
+- [x] Actualizar PM-03D-yjs-sync-notes.md (resultado, falsos positivos, documentación)
+- [x] Actualizar latest_handoff.md
+- [x] Actualizar migracion_briefly.md (PM-03D COMPLETO)
+
+### Smoke resultado
+
+```
+Ticket endpoint:   PASS
+Provider A conn:  PASS
+Provider B conn:  PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
+
+SYNC PASS: bidirectional text sync verified
+```
+
+### Hallazgo clave
+
+**PM-03D.2 fue falso negativo.** El smoke anterior usó `ws` raw + parseo manual de bytes del protocolo yjs.
+PM-03D.4 usa `WebsocketProvider` de `y-websocket` — la forma correcta de conectar clientes yjs.
+
+La clave: `WS_BASE = 'ws://localhost:8002/collab/crdt'` (debe incluir el mount point del endpoint).
+
+### Archivos del smoke
+
+```
+apps/backend/collaboration-service/smoke/
+├── .gitignore           (node_modules/, .env, *.log, package-lock.json)
+├── package.json         (yjs ^13.6.0, y-websocket ^1.5.0, ws ^8.14.0)
+└── yjs-sync-smoke.mjs   (bidirectional sync test con auto-setup)
+```
 
 ### Contrato para siguiente iteración
 
-**PM-03D.3 — Decision gate arquitectura realtime**
-- Evaluar: translation layer, y-websocket server, Hocuspocus, pycrdt client-only, o abandonar
-- NO ejecutar PM-03E todavía
-- PM-03E requiere decisión de arquitectura resuelta
+**PM-03E — Persistencia S3/DynamoDB** (siguiente fase, no bloqueada)
+- PM-03D completado — sync bidireccional verificado
+- Ya no hay bloqueo de arquitectura realtime
 
 ---
 

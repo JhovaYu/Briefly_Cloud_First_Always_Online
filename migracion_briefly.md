@@ -1392,7 +1392,7 @@ Pendientes:
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D PARTIAL ⚠️, PM-03D.3 Gate ⏳, PM-03E Bloqueada |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅ (2026-04-26), PM-03E Siguiente |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1422,26 +1422,33 @@ El proyecto se considera listo para demo cuando:
 
 ## 12. Próximo paso inmediato
 
-**PM-03D PARCIAL — Ticket auth funciona, Yjs sync BLOQUEADO por incompatibilidad de protocolo.**
+**PM-03D COMPLETO (2026-04-26) — SYNC PASS**
 
-### Lo que funciona (validado en PM-03D.2):
-- Ticket endpoint: emite tickets opacos reales (HTTP 200)
-- WebSocket connection: dos clientes conectan con tickets válidos
-- Auth flow: JWT en header, no query string, no logging
-- Feature flag: pasado correctamente por Docker Compose
+### Hallazgo PM-03D.4:
+- **PM-03D.2 fue falso negativo.** El smoke anterior usó `ws` raw + parseo manual del protocolo yjs.
+- Usando `WebsocketProvider` de `y-websocket` correctamente, `pycrdt-websocket` y `yjs` SON compatibles.
+- La clave: `WS_BASE = 'ws://localhost:8002/collab/crdt'` (debe incluir el mount point).
 
-### Lo que está bloqueado:
-- Yjs bidirectional sync: pycrdt-websocket y yjs/y-protocols usan formatos de mensaje binario estructuralmente incompatibles
-  - pycrdt: `[SYNC, SYNC_KIND_fixed, len, data]`
-  - yjs: `[SYNC, syncKind_varuint, stateVector_varuint8array]`
+### Lo que funciona (validado en PM-03D.4):
+- Ticket endpoint: emite tickets opacos reales (HTTP 200) ✅
+- WebSocket connection: dos providers conectan con tickets válidos ✅
+- Bidirectional sync A→B y B→A: PASS ✅
+- Auth flow: JWT en header, no query string, no logging ✅
 
-### Hallazgo clave (PM-03D.2):
-pycrdt-websocket NO es compatible con clientes yjs sin capa de traducción de protocolo.
+### Resultado smoke PM-03D.4:
+```
+Ticket endpoint:   PASS
+Provider A conn:  PASS
+Provider B conn:  PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
+
+SYNC PASS: bidirectional text sync verified
+```
 
 **Pendientes:**
-1. Approval humano para commit selectivo de ticket auth infrastructure
-2. PM-03D.3: Decision gate — evaluar estrategia realtime
-3. PM-03E: BLOQUEADO hasta decisión de arquitectura realtime
+1. Approval humano para commit selectivo de smoke infrastructure
+2. PM-03E: Siguiente fase — persistencia S3/DynamoDB
 
 **Commit seguro — ticket auth infrastructure:**
 
@@ -1464,8 +1471,7 @@ git add \
   migracion_briefly.md
 ```
 
-**Excluir:** `apps/backend/collaboration-service/smoke/` (node_modules/ + workspace-specific)
+**Excluir:** `apps/backend/collaboration-service/smoke/node_modules/` (eliminado)
 
 **Después de commit:**
-- PM-03D.3: Decision gate — estrategia realtime (translation layer, y-websocket server, Hocuspocus, o abandonar)
-- PM-03E: NO ejecutar hasta decisión de arquitectura realtime
+- PM-03E: Persistencia S3/DynamoDB (siguiente fase — no bloqueado)

@@ -29,23 +29,91 @@ node yjs-sync-smoke.mjs
 
 - `SUPABASE_TEST_JWT` — JWT real de Supabase (NO imprimir ni guardar)
 - `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true` — habilita mount de `/collab/crdt`
-- `COLLAB_WS_URL=ws://localhost:8002/collab/crdt` — URL del endpoint CRDT
+- `COLLAB_WS_BASE_URL=ws://localhost:8002/collab/crdt` — URL del endpoint CRDT
 - `COLLAB_BASE_URL=http://localhost:8002` — URL base para HTTP
-- `COLLAB_WORKSPACE_ID` y `COLLAB_DOCUMENT_ID` — IDs del workspace/document a usar
 
-## Cómo obtener SUPABASE_TEST_JWT
+El smoke crea workspace/document automáticamente si no existen.
 
-En la terminal donde se ejecuta el smoke:
-```bash
-# Verificar que está cargado:
-powershell -Command "if (-not $env:SUPABASE_TEST_JWT) { throw 'No está' }; Write-Host 'Length:' $env:SUPABASE_TEST_JWT.Length"
+## Resultado PM-03D.4 (2026-04-26) — SYNC PASS
+
+**Conclusión:** `pycrdt-websocket` (servidor Python) y `y-websocket` (cliente JS) SON compatibles cuando se usa `WebsocketProvider` correctamente.
+
+### Qué se usó
+
+```javascript
+import { WebsocketProvider } from 'y-websocket';
+import WebSocket from 'ws';
+
+const provider = new WebsocketProvider(
+  'ws://localhost:8002/collab/crdt',  // ⚠️ MUST include /collab/crdt prefix
+  `${workspaceId}/${documentId}`,      // room name as second arg
+  doc,
+  {
+    WebSocketPolyfill: WebSocket,
+    params: { ticket: ticketId },
+  }
+);
 ```
 
-**NO imprimir el token.** Solo verificar longitud.
+### Key finding
 
-## Resultado PM-03D.2 (2026-04-26)
+**WS_BASE URL debe ser `ws://host/collab/crdt`, no `ws://host/`**
 
-### Qué sí funcionó
+El primer segmento del path se usa como room name en WebsocketProvider.
+El segundo segmento (`/collab/crdt`) es el mount point del endpoint ASGI.
+
+Path efectivo: `ws://localhost:8002/collab/crdt/{workspace_id}/{document_id}?ticket=...`
+
+### Resultado smoke
+
+```
+Ticket endpoint:   PASS
+Provider A conn:  PASS
+Provider B conn:  PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
+
+SYNC PASS: bidirectional text sync verified
+```
+
+### Archivos del smoke
+
+```
+apps/backend/collaboration-service/smoke/
+├── .gitignore           (node_modules/, .env, *.log, package-lock.json)
+├── package.json         (yjs ^13.6.0, y-websocket ^1.5.0, ws ^8.14.0)
+└── yjs-sync-smoke.mjs   (bidirectional sync test con auto-setup de workspace)
+```
+
+### Validaciones
+
+- 55 Python tests: passed
+- Ticket endpoint: HTTP 200 con JWT real
+- Provider A connects: PASS
+- Provider B connects: PASS
+- A→B sync: PASS
+- B→A sync: PASS
+- No JWT printed
+- No ticket printed in full
+
+### PM-03D.4 vs PM-03D.2
+
+| Aspecto | PM-03D.2 (falso negativo) | PM-03D.4 (correcto) |
+|---|---|---|
+| Cliente WS | `ws` raw | `WebsocketProvider` |
+| Room name | Manual en URL | Segundo argumento del provider |
+| Sync protocol | Parseo manual de bytes | Yjs sync automático via provider |
+| WebsocketProvider params | N/A | `{ WebSocketPolyfill, params: { ticket } }` |
+| WS_BASE URL | `ws://host/` | `ws://host/collab/crdt` |
+| Resultado | "BLOCKED" (falso) | SYNC PASS (correcto) |
+
+---
+
+## Resultado PM-03D.2 (2026-04-26) — FALSO NEGATIVO
+
+**Este resultado fue posteriormente identificado como falso positivo.**
+
+### Qué funcionó
 
 1. **Ticket endpoint** — `POST /collab/{ws_id}/{doc_id}/ticket` emite tickets opacos reales con HTTP 200. Requiere `Authorization: Bearer <JWT>` válido contra Workspace Service.
 
@@ -58,55 +126,26 @@ powershell -Command "if (-not $env:SUPABASE_TEST_JWT) { throw 'No está' }; Writ
 
 4. **Feature flag** — `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false` por defecto. Docker Compose pasa el flag correctamente desde env.
 
-5. **Docker Compose config** — `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true` visible en `docker compose config`.
+### Qué falló (falso)
 
-### Qué falló
+**Yjs bidirectional sync A→B y B→A — "BLOCKED"**
 
-**Yjs bidirectional sync A→B y B→A — BLOCKED**
+El smoke PM-03D.2 usó `ws` raw + parseo manual de bytes del protocolo yjs para intentar verificar sync.
+Esto reportó incompatibilidad, pero el resultado fue un falso negativo porque:
 
-pycrdt-websocket (servidor Python) y yjs/y-protocols (cliente JavaScript) usan formatos de mensaje binario estructuralmente incompatibles.
+- `ws` raw no implementa el protocolo de sync de Yjs
+- El parseo manual de bytes no representa el comportamiento real de un cliente Yjs
+- `WebsocketProvider` de `y-websocket` maneja el protocolo correctamente
 
-### Evidencia del mismatch
+### Opciones evaluadas en PM-03D.3 (decision gate)
 
-```
-pycrdt genera para sync step1 con sv vacío:
-  [SYNC_TYPE=0, SYNC_KIND=0 (1 byte fijo), varuint(len=1), data_byte=0]
-  = 4 bytes: [0, 0, 1, 0]
-
-yjs/y-protocols writeSyncStep1 genera:
-  [SYNC_TYPE=0 (varuint), syncKind=0 (varuint), stateVector_bytes]
-  Para sv vacío: [0, 0] (2 bytes)
-
-Server responde [0, 0, 1, 0]
-yjs readSyncMessage intenta:
-  readVarUint → 0 (sync_type)
-  readVarUint → 0 (syncKind)
-  readVarUint → 1 (len)
-  readVarUint8Array → necesita leer 1 byte pero quedan 0 bytes → "Unexpected end of array"
-```
-
-### Impacto
-
-PM-03D **NO puede cerrarse como "Yjs sync real" todavía**.
-El endpoint CRDT y el sistema de tickets funcionan.
-Pero un cliente yjs no puede sincronizar con el servidor pycrdt.
-
-### Opciones de decisión (para PM-03D.3)
-
-| Opción | Descripción | Complexity |
+| Opción | Descripción | Resolution |
 |---|---|---|
-| A | Translation layer entre pycrdt y yjs wire protocol | ALTA — requiere reimplementar sync codec |
-| B | Usar servidor y-websocket (Node.js) en lugar de pycrdt-websocket | MEDIA — switch de servidor, yjs client funciona directo |
-| C | Usar cliente Python (pycrdt) en lugar de yjs | BAJA — mismo stack, pero limita clientes |
-| D | Hocuspocus (TipTap) como servidor de colaboración | MEDIA — requiere evaluación |
-| E | Mantener como spike fallido, no continuar realtime | CERO — decision gate puede decidir no continuar |
-
-### Próximo paso recomendado
-
-**PM-03D.3 — Decision gate**
-Evaluar opciones A-E antes de invertir en PM-03E (persistencia S3/DynamoDB).
-
-**NO ejecutar PM-03E hasta que la estrategia realtime esté definida.**
+| A | Translation layer entre pycrdt y yjs wire protocol | NO NECESARIA — ya es compatible |
+| B | Usar servidor y-websocket (Node.js) | NO NECESARIA — pycrdt funciona |
+| C | Usar cliente Python (pycrdt) | NO NECESARIA — yjs funciona |
+| D | Hocuspocus (TipTap) | NO EVALUADA — pycrdt ya funciona |
+| E | Abandonar realtime | NO — sync funciona |
 
 ---
 
@@ -124,12 +163,13 @@ Connecting Client A...
 
 **Causa:** El endpoint CRDT requiere `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true` para estar montado. El smoke usó un ticket hardcodeado `test-ticket-for-local-validation` que no existe en el ticket store.
 
+---
+
 ## Limitaciones conocidas
 
-- El smoke test smoke/node_modules/ NO debe commitearse
-- El workspace/document de test debe existir en Workspace Service real
+- El smoke test `smoke/node_modules/` NO debe commitearse
 - `one_time=False` por defecto — múltiples clientes pueden compartir ticket (no es riesgo de seguridad)
-- pycrdt-websocket yjs sync NO funciona sin adapter de protocolo
+- Workspace/document de test se crean automáticamente via Workspace Service API
 
 ## Decisiones registradas
 
@@ -141,13 +181,13 @@ Connecting Client A...
 | 2026-04-25 | Header(..., alias="Authorization") | OpenAPI genera header correcto |
 | 2026-04-26 | on_connect(msg, scope) — orden de params | pycrdt llama (msg, scope), no (scope, receive) |
 | 2026-04-26 | WebsocketServer.start() en lifespan | Servidor necesita start() explícito |
-| 2026-04-26 | pycrdt/yjs incompatibilidad de protocolo | Yjs bidirectional sync bloqueado |
+| 2026-04-26 | PM-03D.2 faux negatif — ws raw vs WebsocketProvider | Compatibilidad real confirmada con PM-03D.4 |
+| 2026-04-26 | PM-03D.4 SYNC PASS — pycrdt + y-websocket compatibles | PM-03E desbloqueado |
 
-## Contrato para siguiente iteración (PM-03D.3)
+## Contrato para siguiente iteración
 
-PM-03D.3 debe:
-1. Decision gate sobre estrategia realtime (opciones A-E)
-2. NO implementar PM-03E todavía
-3. Documentar decisión y causa
+**PM-03E — Persistencia S3/DynamoDB** (siguiente fase — no bloqueado)
 
-PM-03E queda como siguiente fase después de decisión de arquitectura.
+PM-03D COMPLETO — sync bidireccional verificado con `WebsocketProvider`.
+
+**PM-03D.5 opcional:** Nginx/reconnect hardening si se requiere para producción.
