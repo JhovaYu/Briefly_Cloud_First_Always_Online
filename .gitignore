@@ -33,4 +33,3 @@ contexto_llm.txt
 # Configuración local del agente (Antigravity) — solo en esta PC
 STUDIO_CONTEXT.md
 .agents
-.gitattributes
