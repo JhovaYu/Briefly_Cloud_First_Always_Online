@@ -1267,7 +1267,95 @@ Pendientes:
   - PM-03C: pycrdt-websocket base
 ```
 
----
+### Entrada 008
+
+```txt
+Fecha: 2026-04-26
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03C — pycrdt-websocket base
+
+Resumen:
+  spike de CRDT/Yjs en collaboration-service. API pycrdt-websocket investigada vía context7 e
+  inspección de source en site-packages. Arquitectura hexagonal: domain/ports/adapters/use_cases/api.
+  Nuevo endpoint experimental /collab/crdt/{ws_id}/{doc_id} montado como ASGI subapp.
+  32 tests passing. Docker build OK. Runtime OK.
+
+Decisión de diseño:
+  - Endpoint experimental /collab/crdt/{ws_id}/{doc_id} vía ASGIServer + WebsocketServer
+  - Existing /collab/{ws_id}/{doc_id} (first-message JSON auth) unchanged para compatibilidad PM-03B
+  - Room key: "{workspace_id}:{document_id}" en WebsocketServer.rooms dict
+  - auto_clean_rooms=True: sala se borra cuando último cliente sale
+  - Import path: from pycrdt.websocket (no pycrdt_websocket) — namespace issue en Windows
+
+Archivos modificados:
+  apps/backend/collaboration-service/requirements.txt — agregado pycrdt, pycrdt-websocket
+  apps/backend/collaboration-service/app/main.py — mounts /collab/crdt ASGI subapp
+
+Archivos creados:
+  apps/backend/collaboration-service/app/domain/collab_room.py
+  apps/backend/collaboration-service/app/ports/crdt_room.py
+  apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
+  apps/backend/collaboration-service/app/use_cases/join_collaboration_room.py
+  apps/backend/collaboration-service/app/api/crdt_routes.py
+  apps/backend/collaboration-service/tests/test_ws_crdt.py
+  docs/migration/PM-03C-pycrdt-api-notes.md
+
+Comandos ejecutados:
+  python -m pytest tests/ -v — ✅ 32 passed in 2.39s
+  python -m py_compile (todos archivos) — ✅ Syntax OK
+  docker compose config — ✅ Validated OK
+  docker compose build collaboration-service — ✅ Built successfully
+  docker compose up -d collaboration-service — ✅ Container healthy
+  curl /collab/health con secret — ✅ 200 OK
+  curl /collab/health sin secret — ✅ 401 Unauthorized
+
+Decisiones registradas:
+  Import path: from pycrdt.websocket (namespace issue con pycrdt_websocket en Windows)
+  No persistence todavía (S3/DynamoDB para PM-03E)
+  No client Yjs integration todavía (PM-03D)
+  Endpoint experimental no rompe auth endpoint existente
+  ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false por defecto (seguro)
+
+Pendientes:
+  - PM-03C.1: Security hardening endpoint CRDT experimental
+  - PM-03D: Yjs sync con auth viable (sin S3/DynamoDB)
+  - PM-03E: persistencia S3/DynamoDB + snapshots/debounce
+  - Approval humano para commit selectivo PM-03C
+```
+
+### Entrada 009
+
+```txt
+Fecha: 2026-04-26
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03C.1 — Security hardening endpoint CRDT experimental
+
+Resumen:
+  Aplicado hardening de seguridad al endpoint CRDT experimental. ENABLE_EXPERIMENTAL_CRDT_ENDPOINT
+  configurado en settings.py con default=False. main.py conditionally mount /collab/crdt solo cuando
+  flag está en true. 3 tests nuevos para gate behavior. 35 tests passing. Docker build OK.
+
+Cambios aplicados:
+  - app/config/settings.py: agregado ENABLE_EXPERIMENTAL_CRDT_ENDPOINT: bool = False
+  - app/main.py: conditional mount de /collab/crdt basado en setting
+  - tests/test_ws_crdt.py: 3 tests nuevos para TestExperimentalEndpointGate
+
+Decisiones registradas:
+  ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false por defecto (seguro)
+  PM-03D: Yjs sync con auth viable, sin S3/DynamoDB
+  PM-03E: persistencia S3/DynamoDB + snapshots/debounce (fase posterior)
+  /collab/crdt es EXPERIMENTAL — no exponer en producción hasta PM-03D
+
+Comandos ejecutados:
+  python -m pytest tests/ -v — ✅ 35 passed in 2.39s
+  python -m py_compile (todos archivos) — ✅ Syntax OK
+  docker compose config — ✅ Validated OK
+  docker compose build collaboration-service — ✅ Built successfully
+
+Pendientes:
+  - Approval humano para commit selectivo PM-03C + PM-03C.1
+  - PM-03D: Yjs sync con auth viable
+```
 
 ## 10. Estado global
 
@@ -1275,7 +1363,7 @@ Pendientes:
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D-E Pendiente |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |

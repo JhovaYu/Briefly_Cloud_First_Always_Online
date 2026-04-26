@@ -26,14 +26,14 @@ Este archivo es la bitácora auditable de ejecución.
 ## Estado actual resumido
 
 - [x] PM-01 — Foundation local backend
-- [x] PM-02A/B/C — Workspace Service completo y validado
-- [x] PM-02 — Commit pendiente de approval humano
-- [x] PM-03A — Collaboration WebSocket echo + Nginx validation
-- [x] PM-03B — Collaboration Auth handshake + Workspace permissions
-- [x] PM-03B.1 — Auth test hardening (close codes + positive test)
-- [ ] PM-03B.1 — Commit selectivo pendiente de approval humano
-- [ ] PM-03C — pycrdt-websocket base
-- [ ] PM-03D — Yjs sync dos clientes
+- [x] PM-02A/B/C — Workspace Service completo y validado ✅ Commit pending
+- [x] PM-03A — Collaboration WebSocket echo + Nginx validation ✅ Commit pending
+- [x] PM-03B — Collaboration Auth handshake + Workspace permissions ✅ Commit pending
+- [x] PM-03B.1 — Auth test hardening (close codes + positive test) ✅ Commit pending
+- [x] PM-03C — pycrdt-websocket base ✅ Commit pending
+- [ ] PM-03C.1 — Security hardening del endpoint CRDT experimental
+- [ ] PM-03D — Yjs sync dos clientes con auth viable
+- [ ] PM-03E — Persistencia S3/DynamoDB + snapshots/debounce
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
@@ -42,39 +42,117 @@ Este archivo es la bitácora auditable de ejecución.
 
 ---
 
-## PM-03B.1 — Auth Test Hardening (2026-04-25)
+## PM-03C.1 — Security hardening endpoint CRDT experimental (2026-04-26)
 
 ### Checklist
 
-- [x] Corregir tests WebSocket negativos (context manager correcto, verifican close codes)
-- [x] Agregar test positivo `auth_ok_ping_pong` con fake permission client + patch
-- [x] Agregar test `permission_denied_closes_with_4003`
-- [x] Agregar test `upstream_unavailable_closes_with_1011`
-- [x] Limpiar imports no usados en routes.py
-- [x] Crear latest_handoff.md
-- [x] Validar tests pytest
-- [x] Actualizar tasks.md y migracion_briefly.md
+- [x] Agregar ENABLE_EXPERIMENTAL_CRDT_ENDPOINT en settings.py (default: false)
+- [x] Actualizar main.py para conditionally mount /collab/crdt
+- [x] Agregar tests TestExperimentalEndpointGate (3 tests)
+- [x] Documentar que /collab/crdt es experimental y no expuesto en producción
+- [x] Actualizar latest_handoff.md, tasks.md, migracion_briefly.md
+- [x] Actualizar PM-03C-pycrdt-api-notes.md con nota de seguridad
+- [x] Tests passing: 35 total
+- [x] py_compile OK
+- [x] Docker build OK
 
-### Tests ahora verifying close codes
+### ENABLE_EXPERIMENTAL_CRDT_ENDPOINT gate
 
-| Test | Close code | Situación |
+- Default: `False` (seguro por defecto)
+- Cuando `False`: `/collab/crdt` NO se monta en la app FastAPI
+- Cuando `True`: `/collab/crdt` se monta y está disponible para pruebas
+- Para tests locales: setear env var `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true`
+
+### Seguridad del endpoint CRDT
+
+**AVISO: `/collab/crdt/{workspace_id}/{document_id}` es EXPERIMENTAL**
+- Auth real todavía NO está integrada (on_connect acepta todo en spike)
+- NO exponer en producción hasta PM-03D (auth viable)
+- Endpoint estable con auth verificada: `/collab/{ws_id}/{doc_id}` (PM-03B)
+- No usar JWT en query string
+
+### Decisiones registradas (PM-03C.1)
+
+| Fecha | Decisión | Impacto |
 |---|---|---|
-| `test_invalid_json_closes_with_4400` | 4400 | Primer mensaje no es JSON válido |
-| `test_wrong_message_type_closes_with_4400` | 4400 | type != "auth" |
-| `test_empty_token_closes_with_4003` | 4003 | token vacío |
-| `test_missing_token_field_closes_with_4003` | 4003 | campo token ausente |
-| `test_auth_ok_ping_pong` | — | auth exitoso → auth_ok + pong |
-| `test_permission_denied_closes_with_4003` | 4003 | Workspace Service rechaza |
-| `test_upstream_unavailable_closes_with_1011` | 1011 | Workspace Service timeout/down |
+| 2026-04-26 | ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false por defecto | Seguridad: endpoint experimental no montado si no se habilita explícitamente |
+| 2026-04-26 | PM-03D: Yjs sync con auth viable, sin S3/DynamoDB todavía | Clarifica alcance PM-03D |
+| 2026-04-26 | PM-03E: persistencia S3/DynamoDB + snapshots/debounce | Fase posterior a PM-03D |
+
+---
+
+## PM-03C — pycrdt-websocket base (2026-04-26) ✅
+
+### Checklist
+
+- [x] Investigar API real de pycrdt/pycrdt-websocket (context7 + inspección source)
+- [x] Documentar API en docs/migration/PM-03C-pycrdt-api-notes.md
+- [x] Actualizar requirements.txt con pycrdt>=0.12.0, pycrdt-websocket>=0.16.0
+- [x] Crear domain/collab_room.py (CollabRoom entity)
+- [x] Crear ports/crdt_room.py (RoomManager port)
+- [x] Crear adapters/pycrdt_room_manager.py (in-memory WebsocketServer wrapper)
+- [x] Crear use_cases/join_collaboration_room.py
+- [x] Crear api/crdt_routes.py (ASGIServer + WebsocketServer mount)
+- [x] Actualizar main.py para conditionally mount /collab/crdt ASGI subapp
+- [x] Crear test_ws_crdt.py (13 tests + 3 gate tests = 16 total)
+- [x] Corregir imports: `from pycrdt.websocket import` (no `pycrdt_websocket`)
+- [x] Tests passing: 35 total
+- [x] Docker build collaboration-service OK
+- [x] Docker compose config OK
+- [x] Runtime: /collab/health OK con secret, 401 sin secret
+- [x] Actualizar tasks.md y migracion_briefly.md
+- [x] Crear latest_handoff.md
+
+### API pycrdt-websocket confirmada (v0.16.0)
+
+```
+from pycrdt.websocket import WebsocketServer, ASGIServer, YRoom
+
+WebsocketServer.rooms: dict[str, YRoom]
+WebsocketServer.auto_clean_rooms: bool
+WebsocketServer.get_room(name: str) -> YRoom  # crea si no existe + inicia
+
+YRoom.clients: set[Channel]
+YRoom.ydoc: Doc  # CRDT document (uno por room)
+YRoom.on_message: Callable[[bytes], Awaitable[bool] | bool] | None
+
+ASGIServer(websocket_server, on_connect=fn, on_disconnect=fn)
+# on_connect(scope, receive) -> bool (True=reject, False=accept)
+```
+
+### Decisión de diseño
+
+- Endpoint experimental: `/collab/crdt/{workspace_id}/{document_id}`
+- Usa ASGIServer + WebsocketServer (no mezcla con routes.py existente)
+- Auth por on_connect callback (simplificado para spike)
+- Room key: `{workspace_id}:{document_id}` en WebsocketServer.rooms dict
+- auto_clean_rooms=True: sala se borra cuando último cliente sale
+- Existing `/collab/{ws_id}/{doc_id}` (first-message JSON auth) unchanged
+- Protegido por ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=false por defecto
 
 ### Validaciones ejecutadas
 
 ```
-python -m pytest apps/backend/collaboration-service/tests -v
-→ 19 passed in 2.36s
+python -m pytest tests/ -v
+→ 35 passed in 2.39s
 
-python -m py_compile routes.py adapters/workspace_client.py use_cases/authenticate_collaboration.py
+python -m py_compile (todos archivos)
 → Syntax OK
+
+docker compose config
+→ Validated OK
+
+docker compose build collaboration-service
+→ Built successfully
+
+docker compose up -d collaboration-service
+→ Container healthy
+
+curl http://localhost/collab/health -H "X-Shared-Secret: changeme"
+→ 200 OK
+
+curl http://localhost/collab/health
+→ 401 Unauthorized
 ```
 
 ---
@@ -103,23 +181,9 @@ python -m py_compile routes.py adapters/workspace_client.py use_cases/authentica
 
 ---
 
-## Decisiones registradas
-
-| Fecha | Decisión | Impacto |
-|---|---|---|
-| 2026-04-25 | Mobile v1/demo usará React Native, no PWA | Afecta PM-06 |
-| 2026-04-25 | Adapter in-memory hasta respuesta académica DynamoDB | Afecta PM-02 |
-| 2026-04-25 | JWT errors genéricos | Afecta PM-02 |
-| 2026-04-25 | SupabaseJWKSVerifier singleton | Afecta PM-02 |
-| 2026-04-25 | No JWT en query string — first-message auth | Afecta PM-03B |
-| 2026-04-25 | Collaboration delega permisos a Workspace Service | Afecta PM-03B |
-| 2026-04-25 | Auth tests verifican close codes específicos | Afecta PM-03B.1 |
-
----
-
 ## Registro de salud de contenedores
 
-Fecha: 2026-04-25
+Fecha: 2026-04-26
 
 | Servicio | Status |
 |---|---|
@@ -132,15 +196,30 @@ Fecha: 2026-04-25
 
 ---
 
-## Archivos recomendados para commit PM-03B.1
+## Archivos recomendados para commit PM-03C + PM-03C.1
 
 ### Modificados
 ```
-apps/backend/collaboration-service/tests/test_ws_auth.py
-apps/backend/collaboration-service/app/api/routes.py
+apps/backend/collaboration-service/app/config/settings.py
+apps/backend/collaboration-service/app/main.py
+apps/backend/collaboration-service/tests/test_ws_crdt.py
 docs/migration/latest_handoff.md
 tasks.md
 migracion_briefly.md
+docs/migration/PM-03C-pycrdt-api-notes.md
+```
+
+### Creados
+```
+apps/backend/collaboration-service/app/domain/collab_room.py
+apps/backend/collaboration-service/app/domain/__init__.py
+apps/backend/collaboration-service/app/ports/crdt_room.py
+apps/backend/collaboration-service/app/ports/__init__.py
+apps/backend/collaboration-service/app/adapters/pycrdt_room_manager.py
+apps/backend/collaboration-service/app/adapters/__init__.py
+apps/backend/collaboration-service/app/use_cases/join_collaboration_room.py
+apps/backend/collaboration-service/app/api/crdt_routes.py
+apps/backend/collaboration-service/requirements.txt
 ```
 
 ### Excluidos
@@ -150,12 +229,13 @@ migracion_briefly.md
 briefly-architecture-repomix.md
 **/__pycache__/
 *.pyc
+.env
 ```
 
 ---
 
 ## Próximo paso
 
-1. Approval humano para commit selectivo PM-03B.1
+1. Approval humano para commit selectivo PM-03C + PM-03C.1
 2. Ejecutar commit selectivo
-3. PM-03C — pycrdt-websocket base
+3. PM-03D — Yjs sync con auth viable

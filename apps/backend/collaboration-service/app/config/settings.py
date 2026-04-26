@@ -11,3 +11,4 @@ class Settings(BaseSettings):
     WORKSPACE_SERVICE_URL: str = "http://workspace-service:8001"
     WORKSPACE_PERMISSION_TIMEOUT_SECONDS: float = 3.0
     COLLAB_AUTH_TIMEOUT_SECONDS: float = 5.0
+    ENABLE_EXPERIMENTAL_CRDT_ENDPOINT: bool = False
