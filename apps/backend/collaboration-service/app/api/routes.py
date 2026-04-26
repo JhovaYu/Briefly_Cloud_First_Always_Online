@@ -5,12 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.adapters.workspace_client import WorkspacePermissionsClient
 from app.config.settings import Settings
-from app.domain.errors import (
-    AuthTimeout,
-    InvalidAuthMessage,
-    PermissionDenied,
-    UpstreamUnavailable,
-)
+from app.domain.errors import PermissionDenied, UpstreamUnavailable
 from app.use_cases.authenticate_collaboration import authenticate_collaboration
 
 router = APIRouter(prefix="/collab")

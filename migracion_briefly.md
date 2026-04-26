@@ -1235,6 +1235,40 @@ Pendientes:
 
 ---
 
+### Entrada 007
+
+```txt
+Fecha: 2026-04-25
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-03B.1 — Auth Test Hardening
+
+Resumen:
+  Tests de auth WebSocket endurecidos. Tests negativos ahora verifican close codes específicos
+  (4400, 4003, 1011). Test positivo con fake permission client + patch. Limpieza de imports
+  no usados en routes.py. 19 tests passing.
+
+Archivos modificados:
+  apps/backend/collaboration-service/tests/test_ws_auth.py — reescrito completo
+  apps/backend/collaboration-service/app/api/routes.py — removed unused imports
+
+Archivos creados:
+  docs/migration/latest_handoff.md — handoff document
+
+Comandos ejecutados:
+  python -m pytest apps/backend/collaboration-service/tests -v — ✅ 19 passed in 2.36s
+  python -m py_compile routes.py adapters/workspace_client.py use_cases/authenticate_collaboration.py — ✅ Syntax OK
+
+Decisiones registradas:
+  Auth tests verifican close codes específicos — no solo exception type
+  Tests positivos usan patch para evitar llamado HTTP real
+
+Pendientes:
+  - Approval humano para commit selectivo PM-03B.1
+  - PM-03C: pycrdt-websocket base
+```
+
+---
+
 ## 10. Estado global
 
 | Área | Estado |
