@@ -294,42 +294,35 @@ function bredactlog {
 
 # -----------------------------------------------------------------------------
 # Helper: bsecretcheck
-# Escanear archivos antes de commit
-# Soporta: bsecretcheck (auto-scan) o bsecretcheck -Path "file"
+# Escanear archivos antes de commit. Solo modo auto-scan (sin -Path).
 # -----------------------------------------------------------------------------
 function bsecretcheck {
-    param(
-        [string]$Path = ""
-    )
+    Write-Host ""
+    Write-Host "=== Secret Scan ===" -ForegroundColor Cyan
 
-    Write-Host "`n=== Secret Scan ===" -ForegroundColor Cyan
-
-    $filesToScan = @()
-
-    if ($Path -ne "") {
-        $filesToScan = @($Path)
+    $staged = git diff --cached --name-only 2>$null
+    if ($staged) {
+        Write-Host "[Scanning STAGED files]" -ForegroundColor Yellow
+        $filesToScan = $staged
     } else {
-        $staged = git diff --cached --name-only 2>$null
-        if ($staged) {
-            Write-Host "`n[Scanning STAGED files]" -ForegroundColor Yellow
-            $filesToScan = $staged
+        $modified = git status --porcelain 2>$null | Where-Object { $_.Trim() -ne "" }
+        if ($modified) {
+            Write-Host "[Scanning MODIFIED/UNTRACKED files]" -ForegroundColor Yellow
+            $filesToScan = $modified | ForEach-Object { $_.Trim().Split(" ", 2)[1] }
         } else {
-            $modified = git status --porcelain 2>$null | Where-Object { $_.Trim() -ne '' }
-            if ($modified) {
-                Write-Host "`n[Scanning MODIFIED/UNTRACKED files]" -ForegroundColor Yellow
-                $filesToScan = $modified | ForEach-Object { $_.Trim().Split(' ', 2)[1] }
-            }
+            $filesToScan = @()
         }
     }
 
     if ($filesToScan.Count -eq 0) {
-        Write-Host "  PASS — nothing to scan" -ForegroundColor Green
-        Write-Host "`n=== Secret scan done ===`n" -ForegroundColor Cyan
+        Write-Host "  PASS: nothing to scan" -ForegroundColor Green
+        Write-Host "=== Secret scan done ===" -ForegroundColor Cyan
+        Write-Host ""
         return
     }
 
     $found = $false
-    $skipExts = @('.exe', '.dll', '.so', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.zip', '.tar', '.gz')
+    $skipExts = @(".exe", ".dll", ".so", ".bin", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz")
 
     foreach ($f in $filesToScan) {
         $resolved = $f
@@ -337,65 +330,73 @@ function bsecretcheck {
             $resolved = Join-Path (Get-Location) $resolved
         }
 
+        if (-not (Test-Path $resolved)) {
+            continue
+        }
         if (-not (Test-Path $resolved -PathType Leaf)) {
             continue
         }
 
         $ext = [System.IO.Path]::GetExtension($resolved).ToLower()
-        if ($skipExts -contains $ext) { continue }
+        if ($skipExts -contains $ext) {
+            continue
+        }
 
-        $txt = Get-Content $resolved -Raw -ErrorAction SilentlyContinue
-        if (-not $txt) { continue }
+        $content = Get-Content $resolved -Raw -ErrorAction SilentlyContinue
+        if (-not $content) {
+            continue
+        }
 
-        # AKIA
-        if ($txt -match 'AKIA[0-9A-Z]{16}') {
+        if ($content -match "AKIA[0-9A-Z]{16}") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Access Key ID: AKIA pattern" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host "         -> AWS Access Key ID" -ForegroundColor Yellow
         }
-        # ASIA
-        if ($txt -match 'ASIA[0-9A-Z]{16}') {
+        if ($content -match "ASIA[0-9A-Z]{16}") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Access Key ID: ASIA pattern" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host "         -> AWS Temp Access Key ID" -ForegroundColor Yellow
         }
-        # IQoJb
-        if ($txt -match 'IQoJb[a-zA-Z0-9+/]+') {
+        if ($content -match "IQoJb[a-zA-Z0-9+/]+") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Session Token: IQoJb prefix" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host "         -> AWS Session Token" -ForegroundColor Yellow
         }
-        # JWT
-        if ($txt -match 'eyJ[A-Za-z0-9+/]{20,}') {
+        if ($content -match "eyJ[A-Za-z0-9+/]{20,}") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> JWT token" -ForegroundColor Yellow
         }
-        # sb_secret
-        if ($txt -match 'sb_secret_[a-zA-Z0-9+/=]{20,}') {
+        if ($content -match "sb_secret_[a-zA-Z0-9+/=]{20,}") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Supabase secret key" -ForegroundColor Yellow
         }
-        # sb_publishable
-        if ($txt -match 'sb_publishable_[a-Za-z0-9+/=]{20,}') {
+        if ($content -match "sb_publishable_[a-zA-Z0-9+/=]{20,}") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Supabase publishable key" -ForegroundColor Yellow
         }
-        # Private key
-        if ($txt -match '-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----') {
+        if ($content -match "-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----") {
             $found = $true
-            Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Private key header" -ForegroundColor Yellow
         }
     }
 
     if (-not $found) {
-        Write-Host "  PASS — no secrets detected" -ForegroundColor Green
+        Write-Host "  PASS: no secrets detected" -ForegroundColor Green
     }
 
-    Write-Host "`n=== Secret scan done ===`n" -ForegroundColor Cyan
+    Write-Host "=== Secret scan done ===" -ForegroundColor Cyan
+    Write-Host ""
 }
 
 # Functions are loaded via dot-source (. .\Briefly.Safety.ps1)
