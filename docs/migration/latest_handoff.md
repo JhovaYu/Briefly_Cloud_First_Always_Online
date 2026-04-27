@@ -418,3 +418,86 @@ PM-04.2: Postgres/Supabase DB real — siguientes en la fila.
 
 **PM-04.1B listo para revision APEX.**
 
+---
+
+## PM-04.2A — Planning DB Real Discovery PASS (2026-04-27)
+
+### Discovery executado (read-only, no código)
+
+| Pregunta | Hallazgo |
+|---|---|
+| ¿Existe estrategia DB previa? | NO — ninguna dependencia ORM, driver DB o migración en todo el repo |
+| ¿Postgres en docker-compose? | NO — 5 servicios pero ninguno de ellos es Postgres |
+| ¿Dependencias existentes para DB? | NO — requirements.txt solo tiene fastapi, uvicorn, pydantic, pydantic-settings, PyJWT, httpx |
+| ¿SQLAlchemy/asyncpg/Alembic? | NO — zero apariciones en el codebase |
+| ¿Arquitectura hexagonal? | SÍ — ports/adapters/use_cases/domain/api bien definidos |
+| ¿Contracts de repositorios existentes? | SÍ — `TaskRepository` y `TaskListRepository` son Protocols async |
+
+### Stack recomendado: SQLAlchemy 2.0 async + asyncpg + Alembic
+
+- Mapping directo de ports a adapters: `TaskRepository` Protocol → `PostgresTaskRepository` implement
+- Alembic para migraciones versionadas y rollback
+- SQLAlchemy 2.0 async con `async_engine` + `async_session` — no bloquea event loop
+- Default `PLANNING_STORE_TYPE=inmemory` — el servicio funciona sin Postgres configurado
+- Feature flag switch en `api/dependencies.py`
+
+### Schema inicial propuesto
+
+**task_lists:** `id` UUID PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id UUID NOT NULL, name TEXT NOT NULL, color TEXT nullable, created_at/updated_at TIMESTAMPTZ, created_by UUID, UNIQUE (id, workspace_id)
+
+**tasks:** `id` UUID PRIMARY KEY, workspace_id UUID NOT NULL, list_id UUID FK composite a task_lists(id, workspace_id), text TEXT NOT NULL, state TEXT CHECK, priority TEXT CHECK, tags TEXT[] Postgres array, timestamps, created_by
+
+### Risks identificados
+
+| Risk | Mitigation |
+|---|---|
+| Postgres no disponible en entorno AWS Academy | Default `inmemory` — degrade gracefully |
+| Alembic migration failure | Idempotent migrations, CI validation |
+| duplicate ID cross-workspace leak | UNIQUE global + 409 + composite FK |
+
+### Discovery validation
+
+- bpreflight: ✅ PASS
+- bsecretcheck: ✅ PASS
+- AWS: ❌ NOT touched
+- Secrets: ❌ NOT printed
+
+**PM-04.2A discovery completo — diseño aprobado por Gemini + APEX.**
+
+---
+
+## PM-04.2B — Planning DB Real Design Spec (2026-04-27)
+
+### Decisión final APEX
+
+| Componente | Decisión |
+|---|---|
+| ORM | SQLAlchemy 2.0 async |
+| Driver | asyncpg |
+| Migraciones | Alembic (dentro de planning-service/) |
+| DB | Postgres opt-in |
+| Default store | PLANNING_STORE_TYPE=inmemory |
+| UUID en DB | UUID nativo Postgres (no TEXT) |
+| task_lists UNIQUE | (id, workspace_id) composite |
+| tasks FK | composite (list_id, workspace_id) → task_lists(id, workspace_id) |
+| tags | TEXT[] Postgres array |
+| Soft delete | NO en MVP |
+| Duplicate ID semantics | same id + same payload → 200 OK; same id + different payload → 409 Conflict |
+
+### Documentación actualizada
+
+- `docs/migration/PM-04-planning-service-design.md` — Section 14 (PM-04.2) añadida con diseño completo
+- Schema SQL, duplicate ID semantics, repository adapter design, Alembic setup, testing strategy, Docker optional Postgres, phases A-H, acceptance criteria
+
+### Git status final
+
+```
+main (clean)
+docs/migration/PM-04-planning-service-design.md actualizado con Section 14 PM-04.2
+docs/migration/latest_handoff.md actualizado con PM-04.2A discovery + PM-04.2B design spec
+```
+
+**No git add/commit/push — listo para revisión APEX.**
+
+---
+
