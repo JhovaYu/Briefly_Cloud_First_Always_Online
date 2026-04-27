@@ -156,4 +156,80 @@ yjs-s3-restart-smoke.mjs
 auditaciones_comandos.txt
 ```
 
-**PM-03E.5C listo para revisión APEX.**
+**PM-03E.5C listo para revision APEX.**
+
+---
+
+## PM-04.0B — Planning Service REST Design Spec (2026-04-27)
+
+### Contexto
+
+PM-04.0 discovery completado por Jarvis. Gemini audit aprobo Minimal REST con correcciones.
+
+DX-01A completo y pusheado. HEAD en `c47de21 DX-01A.2 rewrite bsecretcheck for PS 5.1 compatibility`.
+
+### Decisiones APEX/Gemini aceptadas
+
+- PM-04.1: In-Memory REST temporal para validar backend contract + auth + arquitectura
+- PM-04.2: Postgres/Supabase DB real se adelanta para evitar Big Bang Migration
+- Solo Task + TaskList. No Calendar Events en PM-04.1
+- No Frontend integration en PM-04.1
+- Client-generated IDs obligatorios en POST
+- No `/me` endpoint
+- JWT local (Supabase JWKS) + workspace authorization remota para 403
+- SupabaseJWKSVerifier duplicado es deuda aceptada temporalmente
+
+### Design doc creado
+
+`docs/migration/PM-04-planning-service-design.md`
+
+Contenido:
+- API contract con 6 endpoints (GET/POST task-lists, GET/POST/PUT/DELETE tasks)
+- TaskList y Task schemas (Pydantic)
+- Auth flow (401 antes de workspace call, 403 para permisos insuficientes)
+- Arquitectura hexagonal (siguiendo workspace-service pattern)
+- In-memory persistence (temporal, ephemeral)
+- Tests requeridos (auth 401/403, CRUD, workspace isolation, health)
+- 8 phases de implementacion (A-H)
+- Criterios de aceptacion
+- Riesgos y deuda tecnica
+
+### Scope PM-04.1 (validacion backend)
+
+**Incluye:**
+- GET/POST /workspaces/{workspace_id}/task-lists
+- GET/POST /workspaces/{workspace_id}/tasks
+- PUT /workspaces/{workspace_id}/tasks/{task_id}
+- DELETE /workspaces/{workspace_id}/tasks/{task_id}
+- JWT auth (Supabase JWKS, local verify)
+- Workspace permissions via workspace-service HTTP client
+- Hexagonal architecture (domain/ports/adapters/use_cases/api)
+
+**Excluye:**
+- Frontend integration (React Query)
+- Calendar events
+- Schedule
+- Postgres/SQL migrations
+- TaskList update/delete
+- `/me` endpoint
+
+### Criterios de aceptacion
+
+- planning-service tests pass (pytest)
+- Docker build planning-service OK
+- /health OK con secret, 401 sin secret
+- Auth 401/403 tests pass
+- Client-generated IDs preserved
+- workspace_id isolation
+- Invalid state/priority rejected with 422
+- No AWS touched
+- No secrets printed
+
+### Siguiente paso
+
+PM-04.1 implementation: passa el design spec document a un agent para implementacion.
+
+---
+
+**DX-01A.2 listo para revision APEX.**
+

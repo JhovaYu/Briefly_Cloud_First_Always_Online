@@ -821,7 +821,8 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-01 | Fase 0 | Foundation local FastAPI + Docker + Nginx | **Completado** ✅ 2026-04-24 |
 | PM-02 | Fase 1 | Workspace Service + Supabase JWT | **Completado** ✅ 2026-04-25 |
 | PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
-| PM-04 | Fase 3 | Planning REST + React Query | Pendiente |
+| PM-04 | Fase 3 | Planning REST + React Query | Design spec completado |
+| PM-04.1 | Fase 3 | Planning Service In-Memory REST | Pendiente implementacion |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
 | PM-07 | Fase 6 | AWS Infra scripts/deploy | Pendiente |
@@ -1962,4 +1963,4 @@ git add \
 **Excluir:** `apps/backend/collaboration-service/smoke/node_modules/` (eliminado)
 
 **Después de commit:**
-- PM-03E: Persistencia S3/DynamoDB (siguiente fase — no bloqueado)
+- PM-04.1: Planning Service In-Memory REST (siguiente fase — no bloqueado)

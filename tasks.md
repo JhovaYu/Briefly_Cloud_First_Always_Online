@@ -44,7 +44,8 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03E.5B — AWS Academy bucket + real S3 smoke
 - [x] PM-03E.5C — Fix CRDT room key alignment + local hard restore PASS (2026-04-26)
 - [x] PM-03E — Persistencia S3
-- [ ] PM-04 — Planning Service REST
+- [ ] PM-04 — Planning Service REST (in progress: design spec created)
+- [ ] PM-04.1 — Planning Service In-Memory REST (pending implementation)
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
 - [ ] PM-07 — AWS deployment
