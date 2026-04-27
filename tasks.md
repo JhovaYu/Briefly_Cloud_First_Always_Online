@@ -47,7 +47,8 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-04 — Planning Service REST (design spec created ✅)
 - [x] PM-04.1 — Planning Service In-Memory REST ✅ PASS (2026-04-27)
 - [x] PM-04.1B — Planning Service Runtime/API Smoke ✅ PASS (2026-04-27)
-- [ ] PM-04.2 — Planning Service Postgres/Supabase DB (pending)
+- [x] PM-04.2C1 — Planning DB Foundation ✅ PASS (2026-04-27)
+- [ ] PM-04.2C2 — PostgresTaskRepository + idempotency (pending)
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
 - [ ] PM-07 — AWS deployment

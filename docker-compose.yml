@@ -76,6 +76,8 @@ services:
       - LOG_LEVEL=INFO
       - ENVIRONMENT=local
       - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - PLANNING_STORE_TYPE=${PLANNING_STORE_TYPE:-inmemory}
+      - PLANNING_DATABASE_URL=${PLANNING_DATABASE_URL:-}
     mem_limit: 128m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
@@ -130,6 +132,27 @@ services:
     networks:
       - briefly-internal
 
+  # Optional Postgres for planning-service (used only when PLANNING_STORE_TYPE=postgres)
+  planning-postgres:
+    image: postgres:16-alpine
+    container_name: planning-postgres
+    environment:
+      POSTGRES_DB: briefly_planning
+      POSTGRES_USER: briefly
+      POSTGRES_PASSWORD: ${PLANNING_DB_PASSWORD:-briefly_dev_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-planning-data:/var/lib/postgresql/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U briefly -d briefly_planning"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - briefly-internal
+
   nginx:
     build:
       context: ./infra/nginx
@@ -161,3 +184,4 @@ networks:
 
 volumes:
   collab-snapshots:
+  pg-planning-data:

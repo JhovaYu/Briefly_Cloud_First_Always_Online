@@ -501,3 +501,104 @@ docs/migration/latest_handoff.md actualizado con PM-04.2A discovery + PM-04.2B d
 
 ---
 
+## PM-04.2C1 — Planning DB Foundation PASS (2026-04-27)
+
+### Resumen
+
+Phase C1 de PM-04.2 implementa la base de persistencia DB real para planning-service.
+**No cambia el comportamiento runtime default** — `PLANNING_STORE_TYPE=inmemory` sigue siendo el default.
+
+### Dependencias agregadas (requirements.txt)
+
+```
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.30
+alembic>=1.13
+```
+
+### Settings agregadas (config/settings.py)
+
+```python
+PLANNING_STORE_TYPE: str = "inmemory"   # "inmemory" | "postgres"
+PLANNING_DATABASE_URL: str | None = None  # solo para postgres
+```
+
+### Archivos creados
+
+```
+apps/backend/planning-service/app/adapters/persistence/sqlalchemy/__init__.py
+apps/backend/planning-service/app/adapters/persistence/sqlalchemy/base.py
+apps/backend/planning-service/app/adapters/persistence/sqlalchemy/models.py
+apps/backend/planning-service/app/adapters/persistence/sqlalchemy/database.py
+apps/backend/planning-service/alembic.ini
+apps/backend/planning-service/alembic/env.py
+apps/backend/planning-service/alembic/script.py.mako
+apps/backend/planning-service/alembic/versions/001_initial_task_tables.py
+```
+
+### SQLAlchemy Models
+
+**TaskListModel:** id (UUID PK), workspace_id (UUID), name (Text), color (Text nullable), created_at, updated_at, created_by, UniqueConstraint(id, workspace_id)
+
+**TaskModel:** id (UUID PK), workspace_id (UUID), list_id (UUID nullable), text (Text), state (Text CHECK pending/working/done), priority (Text CHECK low/medium/high), assignee_id (UUID nullable), due_date (nullable), description (nullable), tags (TEXT[]), created_at, updated_at, completed_at (nullable), created_by
+
+### Composite FK — Decisión CRITICAL
+
+**Problema descubierto:** Postgres ON DELETE SET NULL sobre composite FK `(list_id, workspace_id)` intenta NULLAR AMBAS columnas. `workspace_id` es NOT NULL → el delete fallaría con `NotNullViolation`.
+
+**Solución aplicada:** `ON DELETE RESTRICT` — delete de task_list es bloqueado si hay tasks referenciándola.
+
+**Validación real contra Postgres:**
+- Scenario 1 (same workspace FK): ✅ PASS
+- Scenario 2 (cross-workspace FK): ✅ PASS (rejected correctly)
+- Scenario 3 (delete task_list with RESTRICT): ✅ PASS (delete blocked, task intact)
+
+### Alembic Migration
+
+`001_initial_task_tables.py` crea `task_lists` y `tasks` con:
+- UUID nativo (no TEXT)
+- Composite FK `(list_id, workspace_id) -> task_lists(id, workspace_id) ON DELETE RESTRICT`
+- Partial indexes para list_id y assignee
+- Check constraints para state y priority enums
+
+### Docker Postgres opt-in
+
+`planning-postgres` servicio opcional en docker-compose.yml:
+- Imagen: `postgres:16-alpine`
+- Puerto: `5433` (expuesto, no el default 5432)
+- Database: `briefly_planning`
+- User: `briefly` / Password: `${PLANNING_DB_PASSWORD:-briefly_dev_password}`
+- Default `PLANNING_STORE_TYPE=inmemory` → planning-service funciona sin Postgres
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| py_compile (todos archivos nuevos) | ✅ PASS |
+| pytest 49/49 | ✅ PASS |
+| docker compose build planning-service | ✅ PASS |
+| docker compose up -d --force-recreate | ✅ PASS |
+| GET /health | ✅ 200 |
+| alembic upgrade head | ✅ PASS |
+| alembic downgrade base | ✅ PASS |
+| alembic upgrade head (replay) | ✅ PASS |
+| FK Scenario 1 same-workspace | ✅ PASS |
+| FK Scenario 2 cross-workspace | ✅ PASS |
+| FK Scenario 3 RESTRICT behavior | ✅ PASS (delete blocked) |
+
+### Confirmaciones
+
+- No AWS tocado ✅
+- No secrets printed ✅
+- DATABASE_URL nunca impreso ✅
+- No routes/use_cases behavior change ✅
+- No frontend ✅
+- No Calendar ✅
+- No git add/commit/push ✅
+
+### Siguiente paso
+
+PM-04.2C2: Implementar `PostgresTaskRepository` + `PostgresTaskListRepository`, wire a dependency injection, agregar idempotency/409 semantics, smoke test Postgres-backed.
+
+**PM-04.2C1 listo para revisión APEX.**
+
