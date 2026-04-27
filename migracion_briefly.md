@@ -823,6 +823,7 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
 | PM-04 | Fase 3 | Planning REST + React Query | Design spec completado |
 | PM-04.1 | Fase 3 | Planning Service In-Memory REST | **Completado** ✅ 2026-04-27 |
+| PM-04.1B | Fase 3 | Planning Service Runtime/API Smoke | **Completado** ✅ 2026-04-27 |
 | PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | Pendiente |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
@@ -1439,7 +1440,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
 | Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26), PM-03E.4B ✅ (2026-04-26), PM-03E.5A ✅ (2026-04-26), PM-03E.5C ✅ (2026-04-26), PM-03E.5D ✅ (2026-04-26) |
-| Planning REST | Pendiente |
+| Planning REST | PM-04.1 ✅, PM-04.1B ✅ (2026-04-27) |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
 | AWS | Pendiente |
@@ -1965,3 +1966,71 @@ git add \
 
 **Después de commit:**
 - PM-04.1: Planning Service In-Memory REST (siguiente fase — no bloqueado)
+
+### PM-04.1B — Planning Service Runtime/API Smoke (2026-04-27) ✅
+
+```txt
+Fecha: 2026-04-27
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.1B — Planning Service Runtime/API Smoke
+
+Resumen:
+  PM-04.1 ya commit/push (458e01c). PM-04.1B valida end-to-end runtime Docker/local.
+  planning-service + workspace-service ejecutados via docker compose.
+  Todos los endpoints REST probados: task-list CRUD + task CRUD + auth 401.
+  Smoke script creado: apps/backend/planning-service/smoke/planning_api_smoke.py
+
+Bug resuelto durante smoke: Docker stale image
+  - docker compose up --force-recreate NO rebuild-from-source si imagen ya existe
+  - Fix: docker compose build --no-cache planning-service
+  - Sintoma: AttributeError: 'Depends' object has no attribute 'check_membership'
+
+Smoke script bugs corregidos (no son bugs de producto):
+  1. Workspace ID mismatch: smoke enviaba id en CreateWorkspaceRequest pero schema no lo soporta
+     → Fix: usar id de la respuesta del create (server-generated)
+  2. List response parsing: iteraba sobre dict keys en vez de body["task_lists"]
+     → Fix: body.get("task_lists", [])
+  3. 204 No Content: resp.json() lanzaba exception en DELETE
+     → Fix: manejo explicito de 204 en helper step()
+
+Archivos creados:
+  apps/backend/planning-service/smoke/planning_api_smoke.py
+
+Archivos modificados:
+  docs/migration/latest_handoff.md
+  tasks.md
+  migracion_briefly.md
+
+Comandos ejecutados:
+  docker compose build --no-cache planning-service
+  docker compose up -d --force-recreate workspace-service planning-service
+  curl localhost:8001/health
+  curl localhost:8003/health
+  python planning_api_smoke.py
+
+Validaciones ejecutadas:
+  workspace-service health              ✅ {"status":"ok"}
+  planning-service health              ✅ {"status":"ok"}
+  Create workspace                     ✅ 201
+  Create task-list                     ✅ 201
+  List task-lists (confirm id)        ✅ PASS
+  Create task                          ✅ 201
+  List tasks (confirm id+text)         ✅ PASS
+  Update task (state→working)         ✅ 200
+  Delete task                          ✅ 204
+  Confirm task removed                 ✅ PASS
+  401 missing auth                     ✅ PASS
+  401 invalid token                    ✅ PASS
+  AWS touched                          ❌ NOT touched
+  Secrets printed                      ❌ NOT printed
+
+Garantías:
+  - JWT presente (length 804) pero NO impreso
+  - Solo docker compose local (sin .env.s3)
+  - planning_api_smoke.py acepta JWT via env var SUPABASE_TEST_JWT
+
+Pendientes:
+  - Approval humano para commit selectivo PM-04.1B
+  - PM-04.2: Planning Service Postgres/Supabase DB
+```
+

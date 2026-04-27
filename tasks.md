@@ -46,6 +46,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03E — Persistencia S3
 - [x] PM-04 — Planning Service REST (design spec created ✅)
 - [x] PM-04.1 — Planning Service In-Memory REST ✅ PASS (2026-04-27)
+- [x] PM-04.1B — Planning Service Runtime/API Smoke ✅ PASS (2026-04-27)
 - [ ] PM-04.2 — Planning Service Postgres/Supabase DB (pending)
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration

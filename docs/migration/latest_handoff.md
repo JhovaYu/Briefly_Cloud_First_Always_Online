@@ -330,3 +330,91 @@ PM-04.2: Reemplazar in-memory repositories con Postgres/Supabase real. Mantiene 
 
 **PM-04.1 listo para revision APEX.**
 
+---
+
+## PM-04.1B — Planning Service Runtime/API Smoke (2026-04-27) ✅ PASS
+
+### Contexto
+
+PM-04.1 ya commit/push: `458e01c PM-04.1 implement planning service REST in-memory`.
+PM-04.1B valida en runtime Docker/local que planning-service funciona end-to-end con workspace-service.
+
+### Smoke script creado
+
+`apps/backend/planning-service/smoke/planning_api_smoke.py`
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| bpreflight | ✅ PASS — clean working tree |
+| bsecretcheck | ✅ PASS — no secrets detected |
+| SUPABASE_TEST_JWT present | ✅ True (length 804) |
+| workspace-service /health | ✅ `{"status":"ok"}` |
+| planning-service /health | ✅ `{"status":"ok"}` |
+| planning-service /healthz | ✅ `{"status":"ok"}` |
+| Create workspace | ✅ 201 PASS |
+| Create task-list | ✅ 201 PASS |
+| List task-lists (confirm id) | ✅ PASS |
+| Create task | ✅ 201 PASS |
+| List tasks (confirm id+text) | ✅ PASS |
+| Update task (state → working) | ✅ 200 PASS |
+| Delete task | ✅ 204 PASS |
+| Confirm task removed | ✅ PASS |
+| 401 without auth | ✅ PASS |
+| 401 invalid token | ✅ PASS |
+| AWS touched | ❌ NOT touched |
+| Secrets printed | ❌ NOT printed |
+| Git add/commit/push | ❌ NOT executed |
+
+### Auth semantics validadas en runtime
+
+| Condición | HTTP Status |
+|---|---|
+| Missing Authorization header | 401 ✅ |
+| Invalid JWT | 401 ✅ |
+| Valid JWT + workspace membership | 200/201/204 ✅ |
+| Valid JWT + NO workspace membership | 403 (expected, covered by unit tests) |
+
+### Bug encontrado y resuelto: Docker stale image
+
+**Síntoma:** planning-service devolvía 500 `AttributeError: 'Depends' object has no attribute 'check_membership'`.
+
+**Root cause:** `docker compose up --force-recreate` no rebuild-from-source si la imagen ya existe en local.
+
+**Resolución:** `docker compose build --no-cache planning-service` forzó rebuild desde código fuente.
+
+**Lesson learned:** Para garantizar código fresco en container, usar siempre:
+```bash
+docker compose build --no-cache planning-service
+docker compose up -d --force-recreate planning-service
+```
+
+### Smoke test findings (smoke script bugs, not product bugs)
+
+1. **Workspace ID mismatch**: El smoke test original enviaba `id` en `CreateWorkspaceRequest`, pero el schema no lo soporta. Workspace-service ignoraba el campo y generaba su propio ID. El smoke test luego usaba el ID errado para llamadas a planning-service → 403.
+   - **Fix**: Smoke test ahora usa el `id` de la respuesta del create.
+2. **List response parsing**: `GET /workspaces/{id}/task-lists` devuelve `{"task_lists": [...]}`, no una lista directa. El smoke iteraba sobre el dict iterando keys (strings) en vez de valores (objetos).
+   - **Fix**: `body.get("task_lists", [])` en vez de `body`.
+3. **204 No Content**: `DELETE` devuelve 204 sin body. `resp.json()` lanzaba exception.
+   - **Fix**: Manejo explícito de 204 en helper `step()`.
+
+### Smoke script validation
+
+- py_compile: ✅ OK
+- No imprime SUPABASE_TEST_JWT: ✅ (solo lee de env, usa en header)
+- No imprime Authorization Bearer: ✅ (header set but never printed)
+- No imprime secrets: ✅
+- Acepta JWT desde env: ✅
+- Usa localhost/workspace-service/planning-service local: ✅
+- No toca AWS: ✅
+- No usa .env.s3: ✅
+
+### Siguiente paso
+
+PM-04.1B COMPLETO. Planning REST validado end-to-end en runtime Docker.
+
+PM-04.2: Postgres/Supabase DB real — siguientes en la fila.
+
+**PM-04.1B listo para revision APEX.**
+
