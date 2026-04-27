@@ -233,3 +233,100 @@ PM-04.1 implementation: passa el design spec document a un agent para implementa
 
 **DX-01A.2 listo para revision APEX.**
 
+---
+
+## PM-04.1 — Planning Service REST In-Memory PASS (2026-04-27)
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| pytest 49/49 | ✅ PASS |
+| py_compile (dependencies.py, routes.py, main.py) | ✅ OK |
+| docker build planning-service:test | ✅ OK |
+| GET /health | ✅ `{"status":"ok","service":"planning-service"}` |
+| GET /healthz | ✅ `{"status":"ok","service":"planning-service"}` |
+| bsecretcheck | ✅ (see below) |
+
+### Auth semantics implementadas
+
+| Condición | HTTP Status |
+|---|---|
+| Missing Authorization header | 401 |
+| Invalid/expired JWT | 401 |
+| Valid JWT without workspace membership | 403 |
+| workspace-service unavailable | 503 |
+
+### Endpoints implementados
+
+- `GET /workspaces/{workspace_id}/task-lists`
+- `POST /workspaces/{workspace_id}/task-lists`
+- `GET /workspaces/{workspace_id}/tasks`
+- `POST /workspaces/{workspace_id}/tasks`
+- `PUT /workspaces/{workspace_id}/tasks/{task_id}`
+- `DELETE /workspaces/{workspace_id}/tasks/{task_id}`
+
+**Excluidos:** `/me` endpoint, Calendar Events, Frontend, Postgres
+
+### Bugs corregidos durante implementacion
+
+1. **HTTPBearer auto_error=False**: Cambiado de default (True) para control explicito de 401
+2. **check_planning_permission removido**: Security footgun eliminado del port y adapter (APEX STOP)
+3. **require_workspace_access Depends**: Removido `Depends(get_workspace_client)` de la firma — ahora recibe workspace_client como parametro plain, permitiendo dependency override efectivo en tests
+4. **Test callable vs instance**: `app.dependency_overrides[get_current_user] = auth_user` (callable) en vez de `= auth_user()` (instance)
+
+### Debt tecnica aceptada
+
+- `datetime.utcnow()` deprecation warnings (20) — follow-up en PM-04.x
+- `SupabaseJWKSVerifier` duplicado de workspace-service — unificar en shared library futuro
+
+### Archivos modificados
+
+```
+M apps/backend/planning-service/app/api/routes.py
+M apps/backend/planning-service/app/api/dependencies.py
+M apps/backend/planning-service/tests/test_routes.py
+```
+
+### Archivos nuevos (PM-04.1)
+
+```
+?? apps/backend/planning-service/app/adapters/auth/supabase_jwks_token_verifier.py
+?? apps/backend/planning-service/app/adapters/persistence/in_memory_task_list_repository.py
+?? apps/backend/planning-service/app/adapters/persistence/in_memory_task_repository.py
+?? apps/backend/planning-service/app/adapters/workspace_client.py
+?? apps/backend/planning-service/app/api/dependencies.py
+?? apps/backend/planning-service/app/api/schemas.py
+?? apps/backend/planning-service/app/config/__init__.py
+?? apps/backend/planning-service/app/config/settings.py
+?? apps/backend/planning-service/app/domain/errors.py
+?? apps/backend/planning-service/app/domain/task.py
+?? apps/backend/planning-service/app/domain/task_list.py
+?? apps/backend/planning-service/app/domain/task_state.py
+?? apps/backend/planning-service/app/ports/task_list_repository.py
+?? apps/backend/planning-service/app/ports/task_repository.py
+?? apps/backend/planning-service/app/ports/token_verifier.py
+?? apps/backend/planning-service/app/ports/workspace_permissions.py
+?? apps/backend/planning-service/app/use_cases/task_list_use_cases.py
+?? apps/backend/planning-service/app/use_cases/task_use_cases.py
+?? apps/backend/planning-service/tests/test_auth.py
+?? apps/backend/planning-service/tests/test_routes.py
+?? apps/backend/planning-service/tests/test_use_cases.py
+```
+
+### In-memory persistence
+
+Ephemeral — todos los datos se pierden al reiniciar el container. PM-04.2 Postgres/Supabase es el siguiente paso.
+
+### git status
+
+```
+main (clean) — sin git add/commit/push (restriccion APEX)
+```
+
+### Siguiente paso
+
+PM-04.2: Reemplazar in-memory repositories con Postgres/Supabase real. Mantiene la misma API REST y auth semantics.
+
+**PM-04.1 listo para revision APEX.**
+

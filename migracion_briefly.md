@@ -822,7 +822,8 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-02 | Fase 1 | Workspace Service + Supabase JWT | **Completado** ✅ 2026-04-25 |
 | PM-03 | Fase 2 | Spike Collaboration pycrdt-websocket | PM-03A ✅, PM-03B ✅, PM-03C-D Pendiente |
 | PM-04 | Fase 3 | Planning REST + React Query | Design spec completado |
-| PM-04.1 | Fase 3 | Planning Service In-Memory REST | Pendiente implementacion |
+| PM-04.1 | Fase 3 | Planning Service In-Memory REST | **Completado** ✅ 2026-04-27 |
+| PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | Pendiente |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
 | PM-07 | Fase 6 | AWS Infra scripts/deploy | Pendiente |
