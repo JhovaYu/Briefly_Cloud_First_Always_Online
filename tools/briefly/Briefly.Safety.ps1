@@ -351,19 +351,19 @@ function bsecretcheck {
         if ($txt -match 'AKIA[0-9A-Z]{16}') {
             $found = $true
             Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Access Key ID (AKIA...)" -ForegroundColor Yellow
+            Write-Host "         -> AWS Access Key ID: AKIA pattern" -ForegroundColor Yellow
         }
         # ASIA
         if ($txt -match 'ASIA[0-9A-Z]{16}') {
             $found = $true
             Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Access Key ID (ASIA...)" -ForegroundColor Yellow
+            Write-Host "         -> AWS Access Key ID: ASIA pattern" -ForegroundColor Yellow
         }
         # IQoJb
         if ($txt -match 'IQoJb[a-zA-Z0-9+/]+') {
             $found = $true
             Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> AWS Session Token prefix (IQoJb...)" -ForegroundColor Yellow
+            Write-Host "         -> AWS Session Token: IQoJb prefix" -ForegroundColor Yellow
         }
         # JWT
         if ($txt -match 'eyJ[A-Za-z0-9+/]{20,}') {
@@ -378,7 +378,7 @@ function bsecretcheck {
             Write-Host "         -> Supabase secret key" -ForegroundColor Yellow
         }
         # sb_publishable
-        if ($txt -match 'sb_publishable_[a-zA-Z0-9+/=]{20,}') {
+        if ($txt -match 'sb_publishable_[a-Za-z0-9+/=]{20,}') {
             $found = $true
             Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Supabase publishable key" -ForegroundColor Yellow
@@ -387,7 +387,7 @@ function bsecretcheck {
         if ($txt -match '-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----') {
             $found = $true
             Write-Host "`n  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> Private Key header" -ForegroundColor Yellow
+            Write-Host "         -> Private key header" -ForegroundColor Yellow
         }
     }
 

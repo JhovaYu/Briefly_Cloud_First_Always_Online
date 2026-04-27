@@ -35,6 +35,45 @@ if ((Test-Path $PROFILE) -and (-not (Get-Content $PROFILE -Raw -ErrorAction Sile
 
 Run the snippet once, then new PowerShell sessions auto-load helpers.
 
+### Profile note — Windows PowerShell 5.1 vs PowerShell 7 / VS Code
+
+Windows PowerShell 5.1 and PowerShell 7 (or VS Code's integrated terminal) use **different profile files**. Installing in one does not install in the other.
+
+To install in both:
+
+```powershell
+# Windows PowerShell 5.1 — CurrentUserAllHosts (affects all sessions)
+$block = @'
+# BEGIN: Briefly Safety Helpers
+`$brieflyHelpers = "C:\Users\alfom\OneDrive\Documentos\Proyectos_Programacion\Briefly_Cloud_First_Always_Online\tools\briefly\Briefly.Safety.ps1"
+if (Test-Path `$brieflyHelpers) {
+    . `$brieflyHelpers
+    Write-Host "[Briefly Safety Helpers loaded]" -ForegroundColor Green
+}
+# END: Briefly Safety Helpers
+'@
+if ((Test-Path $PROFILE) -and (-not (Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue) -match 'Briefly Safety Helpers')) {
+    Add-Content -Path $PROFILE -Value $block
+}
+
+# PowerShell 7 / VS Code — CurrentUserCurrentHost
+$pwshBlock = @'
+# BEGIN: Briefly Safety Helpers
+`$brieflyHelpers = "C:\Users\alfom\OneDrive\Documentos\Proyectos_Programacion\Briefly_Cloud_First_Always_Online\tools\briefly\Briefly.Safety.ps1"
+if (Test-Path `$brieflyHelpers) {
+    . `$brieflyHelpers
+    Write-Host "[Briefly Safety Helpers loaded]" -ForegroundColor Green
+}
+# END: Briefly Safety Helpers
+'@
+$pwshProfile = "$env:USERPROFILE\Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
+if ((Test-Path $pwshProfile) -and (-not (Get-Content $pwshProfile -Raw -ErrorAction SilentlyContinue) -match 'Briefly Safety Helpers')) {
+    Add-Content -Path $pwshProfile -Value $pwshBlock
+}
+```
+
+**No auto-install** — run the snippet above once, manually, in each PowerShell host you use.
+
 ---
 
 ## Helpers Reference
