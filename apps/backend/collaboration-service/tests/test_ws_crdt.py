@@ -59,9 +59,9 @@ class TestPycrdtRoomManager:
         assert manager.server is not None
 
     def test_room_key_internal_format(self, manager):
-        """Internal room key format is workspace:document."""
+        """Internal room key format is /workspace_id/document_id (path-key, matching pycrdt-websocket)."""
         key = manager._room_key("workspace-123", "document-456")
-        assert key == "workspace-123:document-456"
+        assert key == "/workspace-123/document-456"
 
     @pytest.mark.asyncio
     async def test_get_room_info_nonexistent(self, manager):

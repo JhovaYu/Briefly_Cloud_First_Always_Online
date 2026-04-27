@@ -29,7 +29,8 @@ class TestSnapshotRestore:
     @pytest.mark.asyncio
     async def test_save_snapshot_and_recreate_room_restores_content(self, manager, store):
         """Save snapshot, close room, recreate — verify snapshot content restored."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
+        store_key = "ws-1:doc-1"
 
         # Step 1: Create a room manually and set content
         doc = Doc()
@@ -42,15 +43,15 @@ class TestSnapshotRestore:
 
         # Step 2: Get snapshot (doc state)
         snapshot = doc.get_update()
-        store.save(room_key, snapshot)
+        store.save(store_key, snapshot)
 
         # Step 3: Simulate disconnect — save_and_cleanup
         await manager._save_and_cleanup(room_key, room)
         del manager._server.rooms[room_key]
 
         # Verify snapshot was saved
-        assert store.exists(room_key)
-        saved_snapshot = store.load(room_key)
+        assert store.exists(store_key)
+        saved_snapshot = store.load(store_key)
         assert saved_snapshot == snapshot
 
         # Step 4: Recreate room via _ensure_room
@@ -70,7 +71,7 @@ class TestSnapshotRestore:
     @pytest.mark.asyncio
     async def test_room_without_snapshot_creates_empty_doc(self, manager, store):
         """Room with no snapshot should have empty/initial doc state."""
-        room_key = "ws-2:doc-2"
+        room_key = "/ws-2/doc-2"
 
         # Ensure room exists (no snapshot)
         room, key = await manager._ensure_room("ws-2", "doc-2")
@@ -87,7 +88,7 @@ class TestSnapshotRestore:
     @pytest.mark.asyncio
     async def test_ensure_room_only_creates_once(self, manager, store):
         """Calling _ensure_room twice returns the same room."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
 
         room1, key1 = await manager._ensure_room("ws-1", "doc-1")
         room2, key2 = await manager._ensure_room("ws-1", "doc-1")
@@ -138,10 +139,11 @@ class TestSnapshotRestore:
     @pytest.mark.asyncio
     async def test_corrupt_snapshot_results_in_empty_doc(self, manager, store):
         """Corrupt snapshot should not crash — room starts fresh."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
+        store_key = "ws-1:doc-1"
 
-        # Manually save corrupt data
-        store.save(room_key, b"corrupt invalid data")
+        # Manually save corrupt data under store-key
+        store.save(store_key, b"corrupt invalid data")
 
         # _ensure_room should load it and gracefully handle corruption
         room, key = await manager._ensure_room("ws-1", "doc-1")
@@ -155,7 +157,8 @@ class TestSnapshotRestore:
     @pytest.mark.asyncio
     async def test_close_room_then_reconnect_restores_snapshot(self, manager, store):
         """Full cycle: connect → edit → disconnect (save) → reconnect (restore)."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
+        store_key = "ws-1:doc-1"
 
         # Create room with fresh doc
         doc = Doc()
@@ -164,9 +167,9 @@ class TestSnapshotRestore:
         room.clients = set()
         manager._server.rooms[room_key] = room
 
-        # Simulate saving snapshot
+        # Simulate saving snapshot (using store-key for DocumentStore)
         snapshot = doc.get_update()
-        store.save(room_key, snapshot)
+        store.save(store_key, snapshot)
 
         # Disconnect: save and cleanup
         await manager._save_and_cleanup(room_key, room)
@@ -177,7 +180,7 @@ class TestSnapshotRestore:
         assert new_key == room_key
 
         # Verify content restored
-        restored = store.load(room_key)
+        restored = store.load(store_key)
         assert restored == snapshot
 
 
@@ -195,16 +198,16 @@ class TestOnConnectPrecreation:
     @pytest.mark.asyncio
     async def test_ensure_room_loads_existing_snapshot(self, manager, store):
         """_ensure_room with existing snapshot applies it to ydoc."""
-        room_key = "ws-1:doc-1"
+        store_key = "ws-1:doc-1"
 
         # Pre-save a snapshot in the store using a real doc
         source_doc = Doc()
         snapshot = source_doc.get_update()  # get_update from empty doc
-        store.save(room_key, snapshot)
+        store.save(store_key, snapshot)
 
         # Now _ensure_room should load the snapshot
         room, key = await manager._ensure_room("ws-1", "doc-1")
-        assert key == room_key
+        assert key == "/ws-1/doc-1"
 
         # The ydoc state should match what was saved
         restored = room.ydoc.get_update()
@@ -213,10 +216,10 @@ class TestOnConnectPrecreation:
     @pytest.mark.asyncio
     async def test_ensure_room_creates_new_if_no_snapshot(self, manager, store):
         """_ensure_room creates empty doc when no snapshot exists."""
-        room_key = "ws-new:doc-new"
+        room_key = "/ws-new/doc-new"
 
         # No snapshot pre-saved
-        assert not store.exists(room_key)
+        assert not store.exists("ws-new:doc-new")
 
         room, key = await manager._ensure_room("ws-new", "doc-new")
         assert key == room_key
@@ -229,12 +232,12 @@ class TestOnConnectPrecreation:
     @pytest.mark.asyncio
     async def test_ensure_room_applies_saved_snapshot_to_ydoc(self, manager, store):
         """Verify that _ensure_room applies snapshot content to ydoc."""
-        room_key = "ws-snap:doc-snap"
+        store_key = "ws-snap:doc-snap"
 
         # Create a doc, save its state as snapshot, then delete
         doc = Doc()
         snapshot = doc.get_update()
-        store.save(room_key, snapshot)
+        store.save(store_key, snapshot)
 
         # _ensure_room loads snapshot and creates ydoc with it
         room, key = await manager._ensure_room("ws-snap", "doc-snap")
@@ -257,9 +260,9 @@ class TestCloseRoomSnapshot:
     @pytest.mark.asyncio
     async def test_close_room_saves_and_deletes(self, manager, store):
         """close_room saves snapshot then removes from server."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
 
-        # Manually insert room
+        # Manually insert room (using path-key for server.rooms)
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
@@ -269,15 +272,15 @@ class TestCloseRoomSnapshot:
         # close_room
         await manager.close_room("ws-1", "doc-1")
 
-        # Room should be deleted from server
+        # Room should be deleted from server (path-key)
         assert room_key not in manager._server.rooms
-        # Snapshot should be saved
-        assert store.exists(room_key)
+        # Snapshot should be saved (under store-key)
+        assert store.exists("ws-1:doc-1")
 
     @pytest.mark.asyncio
     async def test_close_room_no_store_still_removes(self, manager):
         """close_room with no document_store still removes room from server."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
 
         doc = Doc()
         room = MagicMock()

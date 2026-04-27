@@ -42,7 +42,7 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-03E.4B — Docker/local config no-regression validation (2026-04-26)
 - [x] PM-03E.5A — Safe Docker S3 env wiring (2026-04-26)
 - [ ] PM-03E.5B — AWS Academy bucket + real S3 smoke
-- [ ] PM-03E.5C — Cleanup/docs
+- [x] PM-03E.5C — Fix CRDT room key alignment + local hard restore PASS (2026-04-26)
 - [ ] PM-03E — Persistencia S3
 - [ ] PM-04 — Planning Service REST
 - [ ] PM-05 — Intelligence/Utility

@@ -109,7 +109,7 @@ class TestPeriodicSave:
     @pytest.mark.asyncio
     async def test_room_with_active_clients_not_removed(self, manager, store):
         """Room with active clients is saved if dirty but NOT removed."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
@@ -121,13 +121,13 @@ class TestPeriodicSave:
 
         # Room should still exist
         assert room_key in manager._server.rooms
-        # Snapshot should be saved
-        assert store.exists(room_key)
+        # Snapshot should be saved under store-key (converted from path-key)
+        assert store.exists("ws-1:doc-1")
 
     @pytest.mark.asyncio
     async def test_empty_room_beyond_grace_saved_and_removed(self, manager, store):
         """Empty room beyond grace period is saved and removed."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
@@ -145,7 +145,7 @@ class TestPeriodicSave:
     @pytest.mark.asyncio
     async def test_empty_room_within_grace_not_removed(self, manager, store):
         """Empty room within grace period is NOT removed."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
@@ -171,23 +171,24 @@ class TestPeriodicSave:
         room2 = MagicMock()
         room2.ydoc = doc2
         room2.clients = set()
-        manager._server.rooms["ws-1:doc-1"] = room1
-        manager._server.rooms["ws-2:doc-2"] = room2
-        manager._mark_dirty("ws-1:doc-1")
-        manager._mark_dirty("ws-2:doc-2")
+        manager._server.rooms["/ws-1/doc-1"] = room1
+        manager._server.rooms["/ws-2/doc-2"] = room2
+        manager._mark_dirty("/ws-1/doc-1")
+        manager._mark_dirty("/ws-2/doc-2")
 
         await manager.run_periodic_snapshot_once()
 
+        # Snapshots saved under store-keys (converted from path-keys)
         assert store.exists("ws-1:doc-1")
         assert store.exists("ws-2:doc-2")
         # Both cleaned
-        assert manager._is_dirty("ws-1:doc-1") is False
-        assert manager._is_dirty("ws-2:doc-2") is False
+        assert manager._is_dirty("/ws-1/doc-1") is False
+        assert manager._is_dirty("/ws-2/doc-2") is False
 
     @pytest.mark.asyncio
     async def test_oversized_snapshot_skipped(self, manager, store):
         """Snapshot larger than MAX_SNAPSHOT_BYTES is not saved."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = MagicMock()
         doc.ydoc = MagicMock()
         doc.ydoc.get_update.return_value = b"x" * 100
@@ -204,8 +205,8 @@ class TestPeriodicSave:
     @pytest.mark.asyncio
     async def test_corrupt_snapshot_still_handled(self, manager, store):
         """Corrupt snapshot in store doesn't crash periodic."""
-        room_key = "ws-1:doc-1"
-        store.save(room_key, b"corrupt")
+        room_key = "/ws-1/doc-1"
+        store.save("/ws-1/doc-1", b"corrupt")
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
@@ -274,11 +275,11 @@ class TestDocObserverSetup:
     @pytest.mark.asyncio
     async def test_ensure_room_sets_up_observer(self, manager):
         """_ensure_room attaches an observer to the ydoc."""
-        room_key = "ws-1:doc-1"
         room, _ = await manager._ensure_room("ws-1", "doc-1")
+        room_key = room.ydoc  # Use room object, not key lookup
 
-        # Observer should be registered
-        assert room_key in manager._doc_subscriptions
+        # Observer should be registered under path-key
+        assert "/ws-1/doc-1" in manager._doc_subscriptions
 
         # Making doc dirty should mark the room
         # The doc observer callback is set, dirty tracking works

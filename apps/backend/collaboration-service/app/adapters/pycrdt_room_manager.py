@@ -14,7 +14,10 @@ class PycrdtRoomManager(RoomManager):
     """In-memory room manager using pycrdt-websocket WebsocketServer.
 
     Each room is a YRoom with in-memory Doc.
-    Room key: "{workspace_id}:{document_id}"
+
+    Room key convention (aligned with pycrdt-websocket):
+    - server.rooms uses path-key: "/{workspace_id}/{document_id}"
+    - DocumentStore uses store-key: "{workspace_id}:{document_id}"
 
     Snapshots are persisted via injected DocumentStore.
     auto_clean_rooms=False so manual snapshot+cleanup happens.
@@ -59,6 +62,36 @@ class PycrdtRoomManager(RoomManager):
         self._empty_room_grace = grace
 
     def _room_key(self, workspace_id: str, document_id: str) -> str:
+        """Return path-key format used in server.rooms (aligned with pycrdt-websocket)."""
+        return f"/{workspace_id}/{document_id}"
+
+    def _path_to_store_key(self, path_key: str) -> str:
+        """Convert path-key (server.rooms) to store-key (DocumentStore).
+
+        Accepts:
+          /workspace_id/document_id (2 segments)
+          /collab/crdt/workspace_id/document_id (4 segments)
+
+        Extracts the last two non-empty segments as workspace_id:document_id.
+        Raises ValueError if path is invalid or has != 2 or 4 segments
+        or if segments contain invalid characters.
+        """
+        if not path_key.startswith("/"):
+            raise ValueError(f"Invalid path_key: must start with /: {path_key!r}")
+        # Extract non-empty segments
+        segments = [s for s in path_key.split("/") if s]
+        # Accept exactly 2 or 4 segments
+        if len(segments) not in (2, 4):
+            raise ValueError(f"Invalid path_key: expected 2 or 4 segments, got {len(segments)}: {path_key!r}")
+        workspace_id = segments[-2]
+        document_id = segments[-1]
+        # Validate segments match expected character pattern
+        import re
+        valid_pattern = re.compile(r"^[A-Za-z0-9_-]+$")
+        if not valid_pattern.match(workspace_id):
+            raise ValueError(f"Invalid workspace_id segment: {workspace_id!r}")
+        if not valid_pattern.match(document_id):
+            raise ValueError(f"Invalid document_id segment: {document_id!r}")
         return f"{workspace_id}:{document_id}"
 
     def _get_lock(self, room_key: str) -> asyncio.Lock:
@@ -129,10 +162,11 @@ class PycrdtRoomManager(RoomManager):
     ) -> tuple[YRoom, str]:
         """Ensure room exists with snapshot loaded, returning (room, room_key).
 
-        If room doesn't exist yet, creates it with any stored snapshot applied.
+        room_key is path-key /workspace_id/document_id (matches server.rooms and pycrdt-websocket).
+        Snapshot loading from DocumentStore uses store-key workspace_id:document_id.
         Acquires lock per room_key for thread-safe room creation.
         """
-        room_key = self._room_key(workspace_id, document_id)
+        room_key = self._room_key(workspace_id, document_id)  # path-key
         lock = self._get_lock(room_key)
 
         async with lock:
@@ -144,7 +178,9 @@ class PycrdtRoomManager(RoomManager):
             doc = Doc()
             store = self._document_store
             if store is not None:
-                snapshot = store.load(room_key)
+                # Convert path-key to store-key for DocumentStore
+                store_key = self._path_to_store_key(room_key)
+                snapshot = store.load(store_key)
                 if snapshot is not None:
                     try:
                         doc.apply_update(snapshot)
@@ -160,6 +196,40 @@ class PycrdtRoomManager(RoomManager):
             self._setup_doc_observer(room_key, doc)
 
             return room, room_key
+
+    async def _ensure_room_for_path(
+        self, path_key: str, workspace_id: str, document_id: str
+    ) -> tuple[YRoom, str]:
+        """Ensure room exists using the exact ASGI scope path as room key.
+
+        path_key is the full ASGI scope["path"], e.g. "/collab/crdt/ws/doc"
+        or "/ws/doc". server.rooms uses this exact path_key.
+        Snapshot loading from DocumentStore uses store-key "workspace_id:document_id".
+        """
+        lock = self._get_lock(path_key)
+
+        async with lock:
+            if path_key in self._server.rooms:
+                return self._server.rooms[path_key], path_key
+
+            doc = Doc()
+            store = self._document_store
+            if store is not None:
+                # Always use store_key "workspace_id:document_id" regardless of path_key
+                store_key = f"{workspace_id}:{document_id}"
+                snapshot = store.load(store_key)
+                if snapshot is not None:
+                    try:
+                        doc.apply_update(snapshot)
+                    except Exception:
+                        pass
+
+            room = YRoom(ready=True, ydoc=doc)
+            self._server.rooms[path_key] = room
+            self._mark_clean(path_key)
+            self._setup_doc_observer(path_key, doc)
+
+            return room, path_key
 
     async def get_room_info(self, workspace_id: str, document_id: str) -> dict:
         room_key = self._room_key(workspace_id, document_id)
@@ -179,7 +249,7 @@ class PycrdtRoomManager(RoomManager):
         }
 
     async def close_room(self, workspace_id: str, document_id: str) -> None:
-        room_key = self._room_key(workspace_id, document_id)
+        room_key = self._room_key(workspace_id, document_id)  # path-key "/ws/doc"
         lock = self._get_lock(room_key)
         async with lock:
             if room_key in self._server.rooms:
@@ -196,7 +266,11 @@ class PycrdtRoomManager(RoomManager):
                         pass
 
     async def _save_and_cleanup(self, room_key: str, room: YRoom) -> None:
-        """Save snapshot and stop room."""
+        """Save snapshot and stop room.
+
+        room_key is path-key (server.rooms key) or store-key (legacy calls).
+        Converts to store-key before saving to DocumentStore.
+        """
         if room.ydoc is None:
             return
         snapshot = room.ydoc.get_update()
@@ -204,7 +278,12 @@ class PycrdtRoomManager(RoomManager):
             return  # skip oversized snapshot
         store = self._document_store
         if store is not None:
-            store.save(room_key, snapshot)
+            # Accept path-key (new) or store-key (legacy test compatibility)
+            if room_key.startswith("/"):
+                store_key = self._path_to_store_key(room_key)
+            else:
+                store_key = room_key  # already store-key format
+            store.save(store_key, snapshot)
         self._mark_clean(room_key)
         try:
             await room.stop()
@@ -214,10 +293,16 @@ class PycrdtRoomManager(RoomManager):
     async def list_rooms(self) -> list[dict]:
         result = []
         for room_key, room in self._server.rooms.items():
-            parts = room_key.split(":", 1)
-            if len(parts) != 2:
+            # room_key is path-key "/workspace_id/document_id"
+            # Convert to store_key for DocumentStore compatibility
+            try:
+                store_key = self._path_to_store_key(room_key)
+                parts = store_key.split(":", 1)
+                if len(parts) != 2:
+                    continue
+                workspace_id, document_id = parts
+            except ValueError:
                 continue
-            workspace_id, document_id = parts
             result.append({
                 "workspace_id": workspace_id,
                 "document_id": document_id,
@@ -265,7 +350,13 @@ class PycrdtRoomManager(RoomManager):
                     # Dirty + empty → save snapshot
                     lock = self._get_lock(room_key)
                     async with lock:
-                        await self._save_and_cleanup(room_key, room)
+                        if room.ydoc is not None:
+                            snapshot = room.ydoc.get_update()
+                            if snapshot and self._max_snapshot_bytes is not None and len(snapshot) > self._max_snapshot_bytes:
+                                # skip oversized snapshot
+                                pass
+                            else:
+                                await self._save_and_cleanup(room_key, room)
                         # After save+stop, the room is gone from server
                         if room_key in self._server.rooms:
                             del self._server.rooms[room_key]
@@ -286,7 +377,8 @@ class PycrdtRoomManager(RoomManager):
                             if snapshot:
                                 max_bytes = self._max_snapshot_bytes
                                 if max_bytes is None or len(snapshot) <= max_bytes:
-                                    self._document_store.save(room_key, snapshot)
+                                    store_key = self._path_to_store_key(room_key)
+                                    self._document_store.save(store_key, snapshot)
                         self._mark_clean(room_key)
                         try:
                             await room.stop()
@@ -313,7 +405,8 @@ class PycrdtRoomManager(RoomManager):
                             if snapshot:
                                 max_bytes = self._max_snapshot_bytes
                                 if max_bytes is None or len(snapshot) <= max_bytes:
-                                    self._document_store.save(room_key, snapshot)
+                                    store_key = self._path_to_store_key(room_key)
+                                    self._document_store.save(store_key, snapshot)
                         self._mark_clean(room_key)
 
     async def _periodic_snapshot_loop(self) -> None:

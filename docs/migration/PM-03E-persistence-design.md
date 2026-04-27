@@ -422,3 +422,92 @@ Default sin override sigue siendo `DOCUMENT_STORE_TYPE=local`.
 - ✅ `.env.s3` cubierto por `.gitignore`
 - ✅ `.env.example` documenta el uso sin secretos
 - ✅ Tests pasan, Docker build OK
+
+---
+
+## PM-03E.5C — CRDT room key alignment fix + local hard restore (2026-04-26) ✅
+
+### Root cause: split-brain rooms
+
+pycrdt-websocket internamente usa `scope["path"]` como key en `server.rooms` dict (ej: `/ws/doc`).
+Nuestro `PycrdtRoomManager` usaba `f"{workspace_id}:{document_id}"` como key (ej: `ws:doc`).
+Resultado: **dos rooms separadas** — una en `server.rooms` (pycrdt) y otra en nuestro tracking (manager).
+
+Cuando un cliente se reconecta, `_ensure_room()` buscaba por store-key `ws:doc`, pero pycrdt había guardado la room bajo path-key `/ws/doc`. La room fresh se creaba sin el snapshot.
+
+**Síntoma:** Provider C después de restart veía documento vacío aunque Provider A había escrito texto.
+
+### Fix implementado
+
+**pycrdt_room_manager.py:**
+- `_room_key()` ahora retorna **path-key** `/workspace_id/document_id` (matching pycrdt-websocket)
+- Nuevo `_path_to_store_key(path_key)` convierte path-key → store-key `workspace_id:document_id`
+- Nuevo `_ensure_room_for_path(path_key, ws, doc)` usa el path exacto ASGI como key en `server.rooms`
+- Todos los `store.save()`/`store.load()` ahora usan store-key via `_path_to_store_key()`
+
+**crdt_routes.py:**
+- `on_connect` usa `scope["path"]` directamente como `path_key` para `track_channel()`
+- Llama `_ensure_room_for_path(path_key, workspace_id, document_id)`
+
+**main.py:**
+- `lifespan` shutdown save también convierte path-key → store-key
+
+### Key convention
+
+```
+server.rooms[key]     → path-key  "/workspace_id/document_id"
+DocumentStore[key]    → store-key "workspace_id:document_id"
+_channel_to_room[id]  → path-key  (same as server.rooms)
+```
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| pytest 153/153 | ✅ PASS |
+| py_compile (3 production files) | ✅ OK |
+| Provider A connected/write | ✅ PASS |
+| Provider B live relay A→B | ✅ PASS (106-107ms) |
+| collaboration-service restart | ✅ OK |
+| Provider C restored exact text | ✅ PASS |
+| AWS real | ❌ NOT touched |
+
+### Tests
+
+- `test_room_key_alignment.py` (nuevo) — 5 classes: path-key↔store-key conversion, `_ensure_room_for_path`, restore
+- `test_room_lifecycle.py` — actualizado para path-key en server.rooms
+- `test_snapshot_restore.py` — actualizado para path-key
+- `test_periodic_snapshot.py` — actualizado para path-key
+- `test_ws_crdt.py` — `test_room_key_internal_format` ahora espera `/ws/doc`
+
+### Local hard restore smoke: PASS
+
+```
+Provider A connected: PASS
+Provider B connected: PASS
+Live relay A to B: PASS (106ms)
+Restarting collaboration-service...
+Provider C connected: PASS
+Provider C restored: "Local Hard Restore Proof 1777264..."
+=== RESULT ===
+LOCAL HARD RESTORE SMOKE: PASS
+```
+
+### Contrato para siguiente iteración
+
+**PM-03E.5D — AWS S3 hard restore smoke** (pendiente)
+- Requiere credenciales AWS Academy vigentes
+- `.env.s3` con `DOCUMENT_STORE_TYPE=s3`
+- Bucket creado
+
+### Criterios de Aceptación Cumplidos
+
+- ✅ Root cause identificado y documentado
+- ✅ `server.rooms` usa path-key exacto de `scope["path"]`
+- ✅ `DocumentStore` sigue usando store-key `ws:doc`
+- ✅ `_path_to_store_key()` convierte correctamente entre formatos
+- ✅ `_ensure_room_for_path()` usa path exacto ASGI
+- ✅ 153 tests PASS
+- ✅ py_compile OK
+- ✅ Local hard restore smoke PASS
+- ✅ AWS real NOT touched

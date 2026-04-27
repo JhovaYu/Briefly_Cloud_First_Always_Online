@@ -83,14 +83,14 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
                 document_id=document_id,
                 ticket_store=ticket_store,
             )
-            # Pre-create room with snapshot loaded (if any) BEFORE pycrdt calls get_room()
-            # This ensures the ydoc has any previously saved state
-            await manager._ensure_room(workspace_id, document_id)
+            # Pre-create room using the EXACT scope["path"] as room key
+            # This ensures server.rooms uses the exact path pycrdt-websocket expects
+            path_key = scope.get("path", "")
             # Track this connection's room so on_disconnect can find it
-            room_key = f"{workspace_id}:{document_id}"
             # channel_id is in msg for websocket.connect
             channel_id = id(msg)
-            manager.track_channel(channel_id, room_key)
+            manager.track_channel(channel_id, path_key)
+            await manager._ensure_room_for_path(path_key, workspace_id, document_id)
             return False  # accept
         except TicketInvalid:
             return True  # reject

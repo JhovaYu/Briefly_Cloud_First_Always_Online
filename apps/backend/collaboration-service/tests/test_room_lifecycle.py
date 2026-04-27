@@ -39,21 +39,23 @@ class TestPycrdtRoomManagerLifecycle:
     @pytest.mark.asyncio
     async def test_close_room_saves_snapshot(self, manager, store):
         """close_room persists current ydoc state to document store."""
-        # Manually create a room with content
-        room_key = "ws-1:doc-1"
+        # Manually create a room with content (path-key in server.rooms)
+        room_key = "/ws-1/doc-1"
         doc = manager._server.rooms[room_key] = MagicMock()
         doc.ydoc = MagicMock()
         doc.ydoc.get_update.return_value = b"snapshot-data"
 
         await manager.close_room("ws-1", "doc-1")
 
-        assert store.load(room_key) == b"snapshot-data"
+        # Store uses store-key "ws-1:doc-1"
+        assert store.load("ws-1:doc-1") == b"snapshot-data"
+        # Server.rooms uses path-key
         assert room_key not in manager._server.rooms
 
     @pytest.mark.asyncio
     async def test_close_room_removes_from_server(self, manager):
         """close_room deletes room from server.rooms after save."""
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = MagicMock()
         doc.ydoc = None  # no store, just check removal
         manager._server.rooms[room_key] = MagicMock()
@@ -66,7 +68,7 @@ class TestPycrdtRoomManagerLifecycle:
     async def test_close_room_with_oversized_snapshot_skips_save(self, manager, store):
         """Snapshot larger than max_snapshot_bytes is not saved."""
         manager.set_max_snapshot_bytes(10)
-        room_key = "ws-1:doc-1"
+        room_key = "/ws-1/doc-1"
         doc = MagicMock()
         doc.ydoc = MagicMock()
         doc.ydoc.get_update.return_value = b"x" * 20  # exceeds 10
@@ -75,13 +77,13 @@ class TestPycrdtRoomManagerLifecycle:
         await manager.close_room("ws-1", "doc-1")
 
         # Should still remove room but not save
-        assert store.load(room_key) is None
+        assert store.load("ws-1:doc-1") is None
         assert room_key not in manager._server.rooms
 
     @pytest.mark.asyncio
     async def test_room_key_with_underscores_and_dashes(self, manager, store):
         """Room keys with underscores and dashes are handled correctly."""
-        room_key = "my-workspace:my_document"
+        room_key = "/my-workspace/my_document"
         doc = MagicMock()
         doc.ydoc = MagicMock()
         doc.ydoc.get_update.return_value = b"content"
@@ -89,7 +91,7 @@ class TestPycrdtRoomManagerLifecycle:
 
         await manager.close_room("my-workspace", "my_document")
 
-        assert store.load(room_key) == b"content"
+        assert store.load("my-workspace:my_document") == b"content"
         assert room_key not in manager._server.rooms
 
 
@@ -121,13 +123,13 @@ class TestDocumentStoreIntegration:
 
     def test_two_rooms_independent_snapshots(self, manager, store):
         """Two rooms keep independent snapshots."""
-        # Manually create two rooms
+        # Manually create two rooms (path-key in server.rooms)
         doc1 = MagicMock()
         doc1.ydoc.get_update.return_value = b"snapshot1"
         doc2 = MagicMock()
         doc2.ydoc.get_update.return_value = b"snapshot2"
-        manager._server.rooms["ws-1:doc-1"] = doc1
-        manager._server.rooms["ws-2:doc-2"] = doc2
+        manager._server.rooms["/ws-1/doc-1"] = doc1
+        manager._server.rooms["/ws-2/doc-2"] = doc2
 
         import asyncio
         asyncio.get_event_loop().run_until_complete(
@@ -137,6 +139,7 @@ class TestDocumentStoreIntegration:
             manager.close_room("ws-2", "doc-2")
         )
 
+        # Store uses store-keys
         assert store.load("ws-1:doc-1") == b"snapshot1"
         assert store.load("ws-2:doc-2") == b"snapshot2"
 

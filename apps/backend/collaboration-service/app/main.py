@@ -45,7 +45,8 @@ async def lifespan(app: FastAPI):
                 snapshot = room.ydoc.get_update()
                 store = _room_manager._document_store
                 if store is not None and snapshot:
-                    store.save(room_key, snapshot)
+                    store_key = _room_manager._path_to_store_key(room_key)
+                    store.save(store_key, snapshot)
         await _room_manager.server.stop()
 
 
