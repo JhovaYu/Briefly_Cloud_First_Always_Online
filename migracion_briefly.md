@@ -1436,7 +1436,7 @@ Siguiente: PM-03E (persistencia S3/DynamoDB)
 |---|---|
 | Foundation local | Terminada ✅ 2026-04-24 |
 | Auth/Workspace | Terminada ✅ 2026-04-25 |
-| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26), PM-03E.4B ✅ (2026-04-26), PM-03E.5A ✅ (2026-04-26), PM-03E.5C ✅ (2026-04-26) |
+| Collaboration pycrdt | PM-03A ✅, PM-03B ✅, PM-03C ✅, PM-03C.1 ✅, PM-03D ✅, PM-03D.5 ✅ (2026-04-26), PM-03E.2 ✅ (2026-04-26), PM-03E.3 ✅ (2026-04-26), PM-03E.4A ✅ (2026-04-26), PM-03E.4B ✅ (2026-04-26), PM-03E.5A ✅ (2026-04-26), PM-03E.5C ✅ (2026-04-26), PM-03E.5D ✅ (2026-04-26) |
 | Planning REST | Pendiente |
 | Intelligence/Utility | Pendiente |
 | Frontend cloud-first + React Native | Pendiente |
@@ -1874,10 +1874,29 @@ LOCAL HARD RESTORE SMOKE: PASS
 
 ### Contrato para siguiente iteración
 
-**PM-03E.5D — AWS S3 hard restore smoke** (pendiente)
-- Requiere credenciales AWS Academy vigentes
-- `.env.s3` con `DOCUMENT_STORE_TYPE=s3`
-- Bucket creado
+**PM-03E.5D — AWS S3 hard restore smoke** ✅ COMPLETO (2026-04-26)
+- Credenciales AWS Academy vigentes ✅
+- `.env.s3` con `DOCUMENT_STORE_TYPE=s3` ✅
+- Bucket `briefly-cloud-first-collab-snapshots-dev` verificado ✅
+
+### PM-03E.5D — AWS S3 hard restore smoke (2026-04-26) ✅
+
+**Resultado: PASS**
+
+Validación E2E con AWS S3 real tras fix PM-03E.5C:
+- Provider A escribe texto único
+- Provider B recibe en vivo (relay)
+- latest.bin persiste en S3 (ContentLength: 50 bytes)
+- collaboration-service restart (docker compose --force-recreate)
+- Provider C restaura texto exacto desde S3
+
+**Smoke output:**
+```
+HARD RESTART SMOKE: PASS
+Provider B restored text: "S3 Restart Proof 1777265580090"
+S3 ContentLength before restart: 50 bytes
+S3 ContentLength after restart:  50 bytes
+```
 
 ### Criterios de Aceptación Cumplidos
 

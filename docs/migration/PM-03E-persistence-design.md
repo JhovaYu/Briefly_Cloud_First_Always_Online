@@ -425,6 +425,99 @@ Default sin override sigue siendo `DOCUMENT_STORE_TYPE=local`.
 
 ---
 
+## PM-03E.5D — AWS S3 hard restore smoke (2026-04-26) ✅
+
+### Problema resuelto
+
+Validar persistencia CRDT real en AWS S3 después del fix PM-03E.5C, usando hard restore tras reiniciar collaboration-service.
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| JWT SUPABASE_TEST_JWT presente | ✅ length=804 |
+| collaboration-service container up | ✅ |
+| workspace-service container up | ✅ |
+| Provider A connected/write | ✅ PASS |
+| Provider B live relay A→B | ✅ PASS |
+| S3 latest.bin exists | ✅ |
+| ContentLength > 2 | ✅ 50 bytes |
+| collaboration-service restart | ✅ OK |
+| Provider C restored exact text | ✅ PASS |
+| AWS real touched | ✅ Only S3 head_object |
+| No secrets printed | ✅ |
+
+### AWS S3 hard restore smoke: PASS
+
+```
+=== PM-03E.5B.1 S3 Hard Restart Smoke ===
+
+Created workspace: ...0485
+Created document: ...5961
+
+Using room: ...0485/...5961
+S3 key: collab-snapshots/...0485/...5961/latest.bin
+
+Unique text for this run: "S3 Restart Proof 1777265580090"
+
+Ticket A: ...TAvE (role=owner)
+
+Provider A connected: PASS
+Provider A synced.
+Writing unique text: "S3 Restart Proof 1777265580090"...
+Content written: textA="S3 Restart Proof 1777265580090"
+
+Disconnecting Provider A cleanly...
+Provider A destroyed.
+
+Waiting 45s for periodic snapshot to be written to S3...
+S3 ContentLength BEFORE restart: 50 bytes
+
+Restarting collaboration-service container...
+Waiting for /health to be OK...
+collaboration-service /health: OK
+
+S3 ContentLength AFTER restart: 50 bytes
+
+Provider B connected: PASS
+Provider B synced.
+
+=== RESULT ===
+HARD RESTART SMOKE: PASS
+Provider B restored text: "S3 Restart Proof 1777265580090"
+S3 ContentLength before restart: 50 bytes
+S3 ContentLength after restart:  50 bytes
+```
+
+### S3 key validation
+
+- Key: `collab-snapshots/{workspace_id}/{document_id}/latest.bin`
+- ContentLength: 50 bytes (non-empty CRDT snapshot)
+- LastModified: present
+- Body never downloaded
+
+### Contrato para siguiente iteración
+
+PM-03E.5D COMPLETO — AWS S3 real validado.
+PM-03E persistence S3 real validated.
+PM-03E — Persistencia S3 COMPLETA (5A: local+S3 wiring, 5C: fix room key, 5D: S3 real smoke).
+
+### Criterios de Aceptación Cumplidos
+
+- ✅ AWS STS OK
+- ✅ S3 head_bucket OK
+- ✅ Provider A connected/write PASS
+- ✅ Provider B live relay PASS
+- ✅ S3 latest.bin exists
+- ✅ ContentLength > 2 (50 bytes)
+- ✅ Restart collaboration-service OK
+- ✅ Provider C restores exact text
+- ✅ No secrets printed
+- ✅ AWS real touched only for S3 smoke
+- ✅ No git add/commit/push
+
+---
+
 ## PM-03E.5C — CRDT room key alignment fix + local hard restore (2026-04-26) ✅
 
 ### Root cause: split-brain rooms

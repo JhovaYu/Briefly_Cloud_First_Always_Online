@@ -1,7 +1,7 @@
 # Latest Handoff
 
 ## Fase
-PM-03E.5C (2026-04-26) — Fix CRDT room key alignment + local hard restore PASS
+PM-03E.5D (2026-04-26) — AWS S3 hard restore smoke PASS
 
 ## Contexto previo relevante
 
