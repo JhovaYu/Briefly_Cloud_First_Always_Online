@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -28,6 +30,7 @@ _task_list_repo: TaskListRepository | None = None
 _settings: Settings | None = None
 _token_verifier: TokenVerifier | None = None
 _workspace_client: WorkspacePermissions | None = None
+_store_type: str | None = None
 
 
 def get_settings() -> Settings:
@@ -37,7 +40,31 @@ def get_settings() -> Settings:
     return _settings
 
 
+def get_store_type() -> str:
+    """Return the configured store type, defaulting to 'inmemory'."""
+    global _store_type
+    if _store_type is None:
+        _store_type = get_settings().PLANNING_STORE_TYPE
+    return _store_type
+
+
 def get_task_repo() -> TaskRepository:
+    store_type = get_store_type()
+    if store_type == "postgres":
+        from app.adapters.persistence.postgres_task_repository import PostgresTaskRepository
+        from app.adapters.persistence.sqlalchemy.database import get_session_factory
+
+        factory = get_session_factory()
+        # Each call creates a fresh repo with its own session (session-per-operation)
+        session = factory()
+        return PostgresTaskRepository(session)
+
+    if store_type != "inmemory":
+        raise ValueError(
+            f"Invalid PLANNING_STORE_TYPE: {store_type!r}. "
+            "Must be 'inmemory' or 'postgres'."
+        )
+
     global _task_repo
     if _task_repo is None:
         _task_repo = InMemoryTaskRepository()
@@ -45,6 +72,21 @@ def get_task_repo() -> TaskRepository:
 
 
 def get_task_list_repo() -> TaskListRepository:
+    store_type = get_store_type()
+    if store_type == "postgres":
+        from app.adapters.persistence.postgres_task_list_repository import PostgresTaskListRepository
+        from app.adapters.persistence.sqlalchemy.database import get_session_factory
+
+        factory = get_session_factory()
+        session = factory()
+        return PostgresTaskListRepository(session)
+
+    if store_type != "inmemory":
+        raise ValueError(
+            f"Invalid PLANNING_STORE_TYPE: {store_type!r}. "
+            "Must be 'inmemory' or 'postgres'."
+        )
+
     global _task_list_repo
     if _task_list_repo is None:
         _task_list_repo = InMemoryTaskListRepository()

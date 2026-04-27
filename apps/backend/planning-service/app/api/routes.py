@@ -12,7 +12,7 @@ from app.api.schemas import (
 from app.api.dependencies import get_current_user, get_task_list_repo, get_task_repo, get_workspace_client, require_workspace_access
 from app.ports.workspace_permissions import WorkspacePermissions
 from app.use_cases import create_task_list, list_task_lists, create_task, list_tasks, update_task, delete_task
-from app.domain.errors import TaskNotFound
+from app.domain.errors import TaskNotFound, DuplicateResourceError
 
 router = APIRouter()
 
@@ -51,14 +51,17 @@ async def create_task_list_endpoint(
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
-    task_list = await create_task_list(
-        list_id=req.id,
-        workspace_id=workspace_id,
-        name=req.name,
-        color=req.color,
-        user_id=auth_user.payload.sub,
-        task_list_repo=task_list_repo,
-    )
+    try:
+        task_list = await create_task_list(
+            list_id=req.id,
+            workspace_id=workspace_id,
+            name=req.name,
+            color=req.color,
+            user_id=auth_user.payload.sub,
+            task_list_repo=task_list_repo,
+        )
+    except DuplicateResourceError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     return TaskListResponse(
         id=task_list.id,
         workspace_id=task_list.workspace_id,
@@ -111,20 +114,23 @@ async def create_task_endpoint(
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
-    task = await create_task(
-        task_id=req.id,
-        workspace_id=workspace_id,
-        text=req.text,
-        state=req.state,
-        priority=req.priority,
-        user_id=auth_user.payload.sub,
-        task_repo=task_repo,
-        list_id=req.list_id,
-        assignee_id=req.assignee_id,
-        due_date=req.due_date,
-        description=req.description,
-        tags=req.tags,
-    )
+    try:
+        task = await create_task(
+            task_id=req.id,
+            workspace_id=workspace_id,
+            text=req.text,
+            state=req.state,
+            priority=req.priority,
+            user_id=auth_user.payload.sub,
+            task_repo=task_repo,
+            list_id=req.list_id,
+            assignee_id=req.assignee_id,
+            due_date=req.due_date,
+            description=req.description,
+            tags=req.tags,
+        )
+    except DuplicateResourceError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     return TaskResponse(
         id=task.id,
         workspace_id=task.workspace_id,

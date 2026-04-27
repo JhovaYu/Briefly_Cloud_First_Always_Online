@@ -825,7 +825,7 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-04.1 | Fase 3 | Planning Service In-Memory REST | **Completado** ✅ 2026-04-27 |
 | PM-04.1B | Fase 3 | Planning Service Runtime/API Smoke | **Completado** ✅ 2026-04-27 |
 | PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | PM-04.2C1 ✅ 2026-04-27 |
-| PM-04.2C2 | Fase 3 | PostgresTaskRepository + idempotency | Pendiente |
+| PM-04.2C2 | Fase 3 | PostgresTaskRepository + idempotency | **Completado** ✅ 2026-04-27 |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
 | PM-07 | Fase 6 | AWS Infra scripts/deploy | Pendiente |
@@ -2033,5 +2033,54 @@ Garantías:
 Pendientes:
   - Approval humano para commit selectivo PM-04.1B
   - PM-04.2: Planning Service Postgres/Supabase DB
+```
+
+---
+
+### PM-04.2C2 — Postgres Repositories + Store Feature Flag (2026-04-27) ✅
+
+```txt
+Fecha: 2026-04-27
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.2C2 — PostgresTaskRepository + PostgresTaskListRepository + PLANNING_STORE_TYPE
+
+Resumen:
+  Implementados los adapters Postgres reales para planning-service con feature flag.
+  78 tests PASS. Smoke test Postgres-backed ALL CHECKS PASSED.
+  Default permanece PLANNING_STORE_TYPE=inmemory.
+
+Implementado:
+- PostgresTaskRepository (pre-check SELECT, idempotent retry, 409 on conflict)
+- PostgresTaskListRepository (same strategy)
+- PLANNING_STORE_TYPE factory en dependencies.py (inmemory/postgres/invalid)
+- DuplicateResourceError → HTTP 409 en routes.py
+- Postgres engine lifespan init/dispose en main.py
+- TRUNCATE safety guard en tests/conftest.py (localhost only, port 5433, db briefly_planning)
+
+Archivos creados (6):
+  app/adapters/persistence/postgres_task_list_repository.py
+  app/adapters/persistence/postgres_task_repository.py
+  tests/conftest.py
+  tests/test_postgres_task_list_repository.py
+  tests/test_postgres_task_repository.py
+  tests/test_store_factory.py
+
+Archivos modificados (4):
+  app/domain/errors.py — DuplicateResourceError
+  app/api/dependencies.py — store-type branching
+  app/api/routes.py — 409 mapping
+  app/main.py — postgres lifespan
+
+Tests: 78 PASS (14+31+13+11+13+5)
+Validaciones:
+  py_compile ✅  pytest 78/78 ✅  docker build ✅
+  health (inmemory) ✅  alembic current ✅  smoke (inmemory) ✅  smoke (postgres) ✅  bsecretcheck ✅
+
+Confirmaciones:
+  No AWS, no secrets printed, no .env.s3, no frontend, no Calendar
+  Default sigue siendo PLANNING_STORE_TYPE=inmemory
+  No git add/commit/push
+
+Siguiente paso: PM-04.2C3 (FK composite tests) o PM-05 Intelligence/Utility
 ```
 

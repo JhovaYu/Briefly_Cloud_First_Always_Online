@@ -602,3 +602,122 @@ PM-04.2C2: Implementar `PostgresTaskRepository` + `PostgresTaskListRepository`, 
 
 **PM-04.2C1 listo para revisión APEX.**
 
+---
+
+## PM-04.2C2 — Postgres Repositories + Store Feature Flag PASS (2026-04-27)
+
+### Resumen
+
+PM-04.2C2 implementa los adapters Postgres reales para planning-service con feature flag `PLANNING_STORE_TYPE=postgres`. Default permanece `inmemory`.
+
+### Decisiones implementadas
+
+| Componente | Decisión |
+|---|---|
+| Idempotency strategy | Pre-check SELECT antes de INSERT (evita IntegrityError state problem) |
+| Same id + same workspace + compatible payload | Idempotent retry → return existing |
+| Same id + same workspace + conflicting payload | 409 DuplicateResourceError |
+| Same id + different workspace | 409 DuplicateResourceError (no data leaked) |
+| Session pattern | Session-per-operation (cada repo.save() usa su propia sesión) |
+
+### Archivos creados
+
+```
+apps/backend/planning-service/app/adapters/persistence/postgres_task_list_repository.py
+apps/backend/planning-service/app/adapters/persistence/postgres_task_repository.py
+apps/backend/planning-service/tests/conftest.py
+apps/backend/planning-service/tests/test_postgres_task_list_repository.py
+apps/backend/planning-service/tests/test_postgres_task_repository.py
+apps/backend/planning-service/tests/test_store_factory.py
+```
+
+### Archivos modificados
+
+```
+M apps/backend/planning-service/app/domain/errors.py
+M apps/backend/planning-service/app/api/dependencies.py
+M apps/backend/planning-service/app/api/routes.py
+M apps/backend/planning-service/app/main.py
+```
+
+### Dependency factory (dependencies.py)
+
+- `PLANNING_STORE_TYPE=inmemory` → `InMemoryTaskRepository` / `InMemoryTaskListRepository` (singleton global)
+- `PLANNING_STORE_TYPE=postgres` → `PostgresTaskRepository` / `PostgresTaskListRepository` (cada llamada crea nueva sesión)
+- `PLANNING_STORE_TYPE` inválido → `ValueError` fail-fast
+- Postgres sin `PLANNING_DATABASE_URL` → `ValueError` fail-fast en startup
+
+### Idempotency semantics
+
+```
+Client POST with id=X, workspace=A, payload=P:
+  → Si no existe id=X en workspace=A: INSERT → 201 Created
+  → Si existe id=X en workspace=A con mismo payload: idempotent → 201 Created (recurso existente)
+  → Si existe id=X en workspace=A con payload diferente: 409 Conflict
+  → Si existe id=X en workspace=B (diferente): 409 Conflict (cross-workspace, no data leak)
+```
+
+### 409 Conflict mapping
+
+- `DuplicateResourceError` propagates from repository → use case → route
+- Route catching `DuplicateResourceError` → `HTTPException(409, detail=str(e))`
+
+### Tests
+
+| Suite | Count | Result |
+|---|---|---|
+| test_use_cases.py | 14 | ✅ PASS |
+| test_routes.py | 31 | ✅ PASS |
+| test_auth.py | 13 | ✅ PASS |
+| test_postgres_task_list_repository.py | 11 | ✅ PASS |
+| test_postgres_task_repository.py | 13 | ✅ PASS |
+| test_store_factory.py | 5 | ✅ PASS |
+| **TOTAL** | **78** | **✅ PASS** |
+
+### Validaciones runtime
+
+| Validación | inmemory | postgres |
+|---|---|---|
+| py_compile | ✅ | ✅ |
+| pytest 78/78 | ✅ | ✅ |
+| docker build | ✅ | ✅ |
+| GET /health | ✅ 200 | ✅ 200 |
+| alembic current | N/A | ✅ 001_initial_task_tables |
+| smoke API (create/list/update/delete) | ✅ | ✅ 10/10 |
+
+### Confirmaciones
+
+- No AWS tocado ✅
+- No secrets printed ✅
+- DATABASE_URL nunca impreso ✅
+- No frontend ✅
+- No Calendar ✅
+- No .env.s3 ✅
+- No git add/commit/push ✅
+- Default sigue siendo `PLANNING_STORE_TYPE=inmemory` ✅
+- API contract no cambió ✅
+
+### Riesgos y deuda técnica
+
+| Risk | Status |
+|---|---|
+| Session-per-operation puede ser sub-óptimo para requests múltiples | Aceptado — requests típicos tienen 1 save() |
+| datetime.utcnow() deprecation warnings | Pendiente (20 warnings, deuda de PM-04.1) |
+
+### Tests safety guard
+
+`tests/conftest.py` incluye guard en tiempo de importación que valida `TEST_DATABASE_URL`:
+- Host debe ser `localhost`, `127.0.0.1`, o `::1`
+- Port debe ser `5433`
+- Database debe ser `briefly_planning`
+- Si alguna condición falla → `RuntimeError` antes de crear engine o ejecutar TRUNCATE
+- Password y URL completa nunca se imprimen en el mensaje de error
+- Soporta override via `PLANNING_TEST_DATABASE_URL` env var (default hardcodeado local)
+
+### Siguiente paso
+
+PM-04.2C3: Tests de integración adicionales (FK composite con tasks, cleanup de tasks antes de delete task_list), documentación de API endpoint schemas si es necesario.
+
+**PM-04.2C2 listo para revisión APEX.**
+
+

@@ -18,6 +18,11 @@ class Unauthorized(PlanningError):
     pass
 
 
+class DuplicateResourceError(PlanningError):
+    """Resource with client-generated ID already exists with conflicting payload"""
+    pass
+
+
 class AuthServiceUnavailable(PlanningError):
     """JWKS/Supabase auth service unavailable"""
     pass
