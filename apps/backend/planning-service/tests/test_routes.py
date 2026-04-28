@@ -1,9 +1,11 @@
 import pytest
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api.dependencies import AuthenticatedUser, get_current_user, get_workspace_client, get_task_repo, get_task_list_repo
+from app.api.db_session import get_db, DBSession
 from app.ports.token_verifier import TokenPayload
 from app.adapters.persistence.in_memory_task_repository import InMemoryTaskRepository
 from app.adapters.persistence.in_memory_task_list_repository import InMemoryTaskListRepository
@@ -197,9 +199,15 @@ class TestClientGeneratedIds:
             app.dependency_overrides.clear()
 
     def test_get_tasks_filters_by_workspace(self):
+        task_repo = InMemoryTaskRepository()
+        task_list_repo = InMemoryTaskListRepository()
+
+        async def override_get_db():
+            yield DBSession(session=None, task_repo=task_repo, task_list_repo=task_list_repo)
+
         app.dependency_overrides[get_current_user] = auth_user
         app.dependency_overrides[get_workspace_client] = workspace_client_mock
-        app.dependency_overrides[get_task_repo] = lambda: InMemoryTaskRepository()
+        app.dependency_overrides[get_db] = override_get_db
         try:
             client = TestClient(app, raise_server_exceptions=False)
             response = client.get(

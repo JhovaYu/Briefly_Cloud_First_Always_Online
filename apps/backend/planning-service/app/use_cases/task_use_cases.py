@@ -87,7 +87,7 @@ async def update_task(
         setattr(existing, key, value)
     existing.updated_at = datetime.utcnow()
 
-    return await task_repo.save(existing)
+    return await task_repo.save(existing, is_update=True)
 
 
 async def delete_task(

@@ -720,4 +720,92 @@ PM-04.2C3: Tests de integración adicionales (FK composite con tasks, cleanup de
 
 **PM-04.2C2 listo para revisión APEX.**
 
+---
+
+## PM-04.2C2.1 — Transaction/Session Lifecycle Fix (2026-04-27)
+
+### Problema detectado
+
+APEX revisó 9a713bd y encontró que las dependencias Postgres no manejaban el lifecycle transaccional:
+- `get_task_repo()` y `get_task_list_repo()` creaban `AsyncSession` pero no hacían commit/rollback/close
+- Routes no manejaban transacción
+- Use cases no hacían commit
+- Repos solo hacían `flush()`, no `commit()`
+
+### Solución implementada
+
+**Nuevo: `app/api/db_session.py` (DBSession dataclass + `get_db()` dependency)**
+
+```python
+@dataclass
+class DBSession:
+    session: AsyncSession | None
+    task_repo: TaskRepository
+    task_list_repo: TaskListRepository
+
+    async def __aenter__(self) -> "DBSession":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session is not None:
+            if exc_type is not None:
+                await self.session.rollback()
+            else:
+                await self.session.commit()
+            await self.session.close()
+        return None
+```
+
+**Transaction lifecycle:**
+- `PLANNING_STORE_TYPE=postgres`: sesión por request, commit en success, rollback en exception, close siempre
+- `PLANNING_STORE_TYPE=inmemory`: sin sesión, sin commit/rollback
+
+**Rutas actualizadas:**
+Todas las rutas ahora usan `db: DBSession = Depends(get_db)` y acceden `db.session`, `db.task_repo`, `db.task_list_repo`.
+
+**Deprecated en dependencies.py:**
+`get_task_repo()` y `get_task_list_repo()` ahora lanzan `RuntimeError` si se llaman con `postgres` (guía al nuevo `get_db`). Solo funcionan para `inmemory`.
+
+### Archivos modificados/creados
+
+```
+M  apps/backend/planning-service/app/adapters/persistence/postgres_task_repository.py
+M  apps/backend/planning-service/app/api/dependencies.py
+M  apps/backend/planning-service/app/api/routes.py
+M  apps/backend/planning-service/tests/test_store_factory.py
+A  apps/backend/planning-service/app/api/db_session.py
+A  apps/backend/planning-service/smoke/tx_lifecycle_smoke.py
+```
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| py_compile (all modified/new) | ✅ OK |
+| pytest 80/80 | ✅ PASS (78 existing + 2 new DBSession lifecycle tests) |
+| docker compose build | ✅ PASS |
+| docker compose up -d --force-recreate | ✅ PASS |
+| health (inmemory) | ✅ 200 OK |
+| tx_lifecycle_smoke (commit/rollback/close) | ✅ ALL CHECKS PASSED |
+| bsecretcheck | ✅ PASS: no secrets detected |
+
+### Confirmaciones
+
+- No AWS toca
+- No secrets printed
+- DATABASE_URL nunca impreso
+- No frontend
+- No Calendar
+- No .env.s3
+- No git add/commit/push
+- Default sigue siendo `PLANNING_STORE_TYPE=inmemory`
+- API contract no cambió (misma REST API, misma respuesta)
+
+### Decisión registrada
+
+El lifecycle transaccional ahora está en `DBSession.__aexit__`:
+- Success: `session.commit()` → `session.close()`
+- Exception: `session.rollback()` → `session.close()`
+- Inmemory: solo pasa (sin sesión que cerrar)
+
 

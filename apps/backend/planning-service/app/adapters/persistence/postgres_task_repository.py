@@ -5,6 +5,9 @@ Implements client-generated ID idempotency:
 - same id + same workspace + compatible payload -> idempotent retry, return existing
 - same id + same workspace + conflicting payload -> 409 DuplicateResourceError
 - same id + different workspace -> generic conflict (no data leaked)
+
+Transaction management: caller is responsible for commit/rollback.
+Repository methods only flush() to write data, never auto-commit.
 """
 
 from __future__ import annotations
@@ -64,7 +67,7 @@ class PostgresTaskRepository(TaskRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, task: Task) -> Task:
+    async def save(self, task: Task, is_update: bool = False) -> Task:
         task_uuid = uuid.UUID(task.id)
 
         # Pre-check: see if this id already exists
@@ -79,23 +82,33 @@ class PostgresTaskRepository(TaskRepository):
                 raise DuplicateResourceError(
                     f"Task with id {task.id} already exists in a different workspace"
                 )
-            # Same workspace: check payload compatibility
-            compatible = (
-                existing.text == task.text
-                and existing.list_id == (uuid.UUID(task.list_id) if task.list_id else None)
-                and existing.state == task.state.value
-                and existing.priority == task.priority.value
-                and existing.assignee_id == (uuid.UUID(task.assignee_id) if task.assignee_id else None)
-                and existing.due_date == task.due_date
-                and existing.description == task.description
-                and existing.tags == (task.tags or [])
-            )
-            if not compatible:
-                raise DuplicateResourceError(
-                    f"Task with id {task.id} already exists with incompatible payload"
+            if is_update:
+                # For updates: if record exists in same workspace, update via ORM merge.
+                # The caller (update_task use case) has already modified the task object
+                # with the new values. We just need to merge it.
+                model = _domain_to_model(task)
+                self._session.merge(model)
+                await self._session.flush()
+                return task
+            else:
+                # For creates: check payload compatibility
+                # Same id + same workspace + different payload = conflict
+                compatible = (
+                    existing.text == task.text
+                    and existing.list_id == (uuid.UUID(task.list_id) if task.list_id else None)
+                    and existing.state == task.state.value
+                    and existing.priority == task.priority.value
+                    and existing.assignee_id == (uuid.UUID(task.assignee_id) if task.assignee_id else None)
+                    and existing.due_date == task.due_date
+                    and existing.description == task.description
+                    and existing.tags == (task.tags or [])
                 )
-            # Idempotent retry — return existing resource
-            return _model_to_domain(existing)
+                if not compatible:
+                    raise DuplicateResourceError(
+                        f"Task with id {task.id} already exists with incompatible payload"
+                    )
+                # Idempotent retry — return existing resource
+                return _model_to_domain(existing)
 
         # No existing record — insert new
         model = _domain_to_model(task)

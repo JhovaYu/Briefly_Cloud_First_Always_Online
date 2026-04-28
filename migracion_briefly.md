@@ -826,6 +826,7 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-04.1B | Fase 3 | Planning Service Runtime/API Smoke | **Completado** ✅ 2026-04-27 |
 | PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | PM-04.2C1 ✅ 2026-04-27 |
 | PM-04.2C2 | Fase 3 | PostgresTaskRepository + idempotency | **Completado** ✅ 2026-04-27 |
+| PM-04.2C2.1 | Fase 3 | Transaction/session lifecycle fix | **Completado** ✅ 2026-04-27 |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
 | PM-07 | Fase 6 | AWS Infra scripts/deploy | Pendiente |

@@ -6,7 +6,7 @@ class InMemoryTaskRepository(TaskRepository):
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
-    async def save(self, task: Task) -> Task:
+    async def save(self, task: Task, *, is_update: bool = False) -> Task:
         self._tasks[task.id] = task
         return task
 

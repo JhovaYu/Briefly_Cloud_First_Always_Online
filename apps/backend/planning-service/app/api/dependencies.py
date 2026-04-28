@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -48,23 +49,57 @@ def get_store_type() -> str:
     return _store_type
 
 
-def get_task_repo() -> TaskRepository:
+@asynccontextmanager
+async def get_db_session():
+    """
+    Async context manager that provides a Postgres AsyncSession per request.
+    Yields a tuple of (session, task_repo, task_list_repo) so routes get
+    all three together and share the same session.
+
+    Only active when PLANNING_STORE_TYPE=postgres.
+    For PLANNING_STORE_TYPE=inmemory, yields None for session and inmemory repos.
+    """
     store_type = get_store_type()
     if store_type == "postgres":
-        from app.adapters.persistence.postgres_task_repository import PostgresTaskRepository
         from app.adapters.persistence.sqlalchemy.database import get_session_factory
 
         factory = get_session_factory()
-        # Each call creates a fresh repo with its own session (session-per-operation)
         session = factory()
-        return PostgresTaskRepository(session)
-
-    if store_type != "inmemory":
+        try:
+            from app.adapters.persistence.postgres_task_repository import PostgresTaskRepository
+            from app.adapters.persistence.postgres_task_list_repository import PostgresTaskListRepository
+            task_repo = PostgresTaskRepository(session)
+            task_list_repo = PostgresTaskListRepository(session)
+            yield session, task_repo, task_list_repo
+        finally:
+            await session.close()
+    elif store_type == "inmemory":
+        global _task_repo, _task_list_repo
+        if _task_repo is None:
+            _task_repo = InMemoryTaskRepository()
+        if _task_list_repo is None:
+            _task_list_repo = InMemoryTaskListRepository()
+        yield None, _task_repo, _task_list_repo
+    else:
         raise ValueError(
             f"Invalid PLANNING_STORE_TYPE: {store_type!r}. "
             "Must be 'inmemory' or 'postgres'."
         )
 
+
+def get_task_repo() -> TaskRepository:
+    """Deprecated: use get_db_session instead. This still works for inmemory-only."""
+    store_type = get_store_type()
+    if store_type == "postgres":
+        raise RuntimeError(
+            "get_task_repo() should not be called directly with PLANNING_STORE_TYPE=postgres. "
+            "Use get_db_session dependency which provides (session, task_repo, task_list_repo)."
+        )
+    if store_type != "inmemory":
+        raise ValueError(
+            f"Invalid PLANNING_STORE_TYPE: {store_type!r}. "
+            "Must be 'inmemory' or 'postgres'."
+        )
     global _task_repo
     if _task_repo is None:
         _task_repo = InMemoryTaskRepository()
@@ -72,21 +107,18 @@ def get_task_repo() -> TaskRepository:
 
 
 def get_task_list_repo() -> TaskListRepository:
+    """Deprecated: use get_db_session instead. This still works for inmemory-only."""
     store_type = get_store_type()
     if store_type == "postgres":
-        from app.adapters.persistence.postgres_task_list_repository import PostgresTaskListRepository
-        from app.adapters.persistence.sqlalchemy.database import get_session_factory
-
-        factory = get_session_factory()
-        session = factory()
-        return PostgresTaskListRepository(session)
-
+        raise RuntimeError(
+            "get_task_list_repo() should not be called directly with PLANNING_STORE_TYPE=postgres. "
+            "Use get_db_session dependency which provides (session, task_repo, task_list_repo)."
+        )
     if store_type != "inmemory":
         raise ValueError(
             f"Invalid PLANNING_STORE_TYPE: {store_type!r}. "
             "Must be 'inmemory' or 'postgres'."
         )
-
     global _task_list_repo
     if _task_list_repo is None:
         _task_list_repo = InMemoryTaskListRepository()
