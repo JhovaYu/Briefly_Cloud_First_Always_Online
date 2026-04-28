@@ -49,6 +49,90 @@ export interface TaskListPreference {
     hidden: boolean;
 }
 
+// ─────────────────────────────────────────────
+// Planning Service Types (cloud backend)
+// ─────────────────────────────────────────────
+
+export type PlanningTaskState = 'pending' | 'working' | 'done';
+export type PlanningPriority = 'low' | 'medium' | 'high';
+
+/**
+ * Workspace from workspace-service.
+ * workspace.id is the source of truth identifier.
+ * workspace.name is a display name only — may be duplicated.
+ */
+export interface Workspace {
+    id: string;
+    name: string;
+    owner_id: string;
+    created_at: string; // ISO datetime string
+    updated_at: string; // ISO datetime string
+}
+
+/**
+ * Task list from planning-service.
+ */
+export interface PlanningTaskList {
+    id: string;
+    workspace_id: string;
+    name: string;
+    color?: string;
+    created_at: string; // ISO datetime string
+    updated_at: string; // ISO datetime string
+    created_by: string;
+}
+
+/**
+ * Task from planning-service.
+ */
+export interface PlanningTask {
+    id: string;
+    workspace_id: string;
+    list_id?: string;
+    text: string;
+    state: PlanningTaskState;
+    priority: PlanningPriority;
+    assignee_id?: string;
+    due_date?: string; // ISO datetime string | null
+    description?: string;
+    tags?: string[];
+    created_at: string; // ISO datetime string
+    updated_at: string; // ISO datetime string
+    completed_at?: string; // ISO datetime string | null
+    created_by: string;
+}
+
+// Request payloads
+
+export interface CreatePlanningTaskListInput {
+    id: string;
+    name: string;
+    color?: string;
+}
+
+export interface CreatePlanningTaskInput {
+    id: string;
+    list_id?: string;
+    text: string;
+    state: PlanningTaskState;
+    priority: PlanningPriority;
+    assignee_id?: string;
+    due_date?: string; // ISO datetime string | null
+    description?: string;
+    tags?: string[];
+}
+
+export interface UpdatePlanningTaskInput {
+    list_id?: string;
+    text?: string;
+    state?: PlanningTaskState;
+    priority?: PlanningPriority;
+    assignee_id?: string;
+    due_date?: string | null;
+    description?: string;
+    tags?: string[];
+}
+
 export interface Pool {
     id: string;
     name: string;

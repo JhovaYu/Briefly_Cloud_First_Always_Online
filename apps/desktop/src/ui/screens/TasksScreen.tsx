@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  History, FileText, Calendar, CheckSquare, Clock, Archive,
-  Trash2, Settings, LogOut, Bell, Plus, X,
+  CheckSquare, Clock, Trash2,
   CheckCircle2, AlertCircle,
   LayoutList, LayoutGrid, Search, MoreHorizontal,
-  Flag,
+  Flag, Plus, X,
 } from 'lucide-react';
 import * as Y from 'yjs';
 import type { Task, TaskState, TaskPriority, TaskList } from '@tuxnotas/shared';
 import { TaskService } from '@tuxnotas/shared';
+import type { PlanningApiClient } from '@tuxnotas/shared';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { Sidebar } from '../components/Sidebar';
 
@@ -83,6 +83,12 @@ interface TasksScreenProps {
   yjsDoc: Y.Doc;  // The user's personal Y.Doc (IndexedDB-backed)
   onNavigate: (screen: AppScreen) => void;
   onBack: () => void;
+  /** Cloud planning enabled — when false (default) TasksScreen uses local Yjs only */
+  planningEnabled?: boolean;
+  /** Workspace ID for planning-service — required when planningEnabled is true */
+  planningWorkspaceId?: string | null;
+  /** Planning API client — required when planningEnabled is true */
+  planningClient?: PlanningApiClient;
 }
 
 // ─────────────────────────────────────────────
@@ -579,7 +585,13 @@ function KanbanCol({ state, tasks, onStateCycle, onEdit, onDelete, onDrop, onAdd
 // MAIN SCREEN
 // ─────────────────────────────────────────────
 
-export function TasksScreen({ user, yjsDoc, onBack, onNavigate }: TasksScreenProps) {
+export function TasksScreen({
+  user,
+  yjsDoc,
+  onNavigate,
+  planningEnabled,
+  planningWorkspaceId,
+}: TasksScreenProps) {
   const serviceRef = useRef<TaskService | null>(null);
   const [personalListId, setPersonalListId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -815,7 +827,14 @@ export function TasksScreen({ user, yjsDoc, onBack, onNavigate }: TasksScreenPro
           {/* ── Page Header ── */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>Tareas</h1>
+              <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
+                Tareas
+                {planningEnabled && planningWorkspaceId && (
+                  <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', verticalAlign: 'middle' }}>
+                    ☁️ cloud
+                  </span>
+                )}
+              </h1>
               <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-tertiary)' }}>
                 {total} tarea{total !== 1 ? 's' : ''} · {progressPct}% completada{progressPct !== 1 ? 's' : ''}
               </p>

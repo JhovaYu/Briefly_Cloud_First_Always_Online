@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Clock, FileText, Trash2, FolderPlus,
-  Folder, Activity, Plus, Edit2,
+  Folder, Activity, Edit2,
   History, Calendar, CheckSquare,
   Users, ListTodo, CalendarClock,
 } from 'lucide-react';

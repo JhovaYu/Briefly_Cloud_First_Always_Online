@@ -1,7 +1,7 @@
 /// <reference path="./electron.d.ts" />
 import { useState, useEffect, useRef } from 'react';
 import * as Y from 'yjs';
-import { IdentityManager } from '@tuxnotas/shared';
+import { IdentityManager, WorkspaceService, PlanningApiClient } from '@tuxnotas/shared';
 import { YjsIndexedDBAdapter } from './infrastructure/persistence/IndexedDBAdapter';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -9,6 +9,16 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 if (SUPABASE_URL && SUPABASE_KEY) {
   IdentityManager.initializeCloud(SUPABASE_URL, SUPABASE_KEY);
 }
+
+// Planning backend feature flag — default false preserves local/Yjs behavior
+const PLANNING_BACKEND_ENABLED =
+  import.meta.env.VITE_PLANNING_BACKEND_ENABLED === 'true';
+const PLANNING_SERVICE_URL =
+  (import.meta.env.VITE_PLANNING_SERVICE_URL as string | undefined) ||
+  'http://localhost:8003';
+const WORKSPACE_SERVICE_URL =
+  (import.meta.env.VITE_WORKSPACE_SERVICE_URL as string | undefined) ||
+  'http://localhost:8001';
 
 import { addPool, getUserProfile, saveUserProfile, type UserProfile } from './core/domain/UserProfile';
 import { ProfileSetup }  from './ui/screens/ProfileSetup';
@@ -44,6 +54,51 @@ function App() {
   if (!personalDocRef.current) {
     personalDocRef.current = new Y.Doc();
   }
+
+  // ── Planning backend state ─────────────────────────────────────
+  const [planningWorkspaceId, setPlanningWorkspaceId] = useState<string | null>(null);
+
+  // Stable token accessor for clients (always reads latest session)
+  const getAccessToken = async (): Promise<string | null> => {
+    const sb = IdentityManager.cloudClient;
+    if (!sb) return null;
+    const { data } = await sb.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
+
+  // Workspace service instance (created once)
+  const workspaceSvc = new WorkspaceService({
+    workspaceBaseUrl: WORKSPACE_SERVICE_URL,
+    getAccessToken,
+  });
+
+  // Planning API client instance (created once)
+  const planningClient = new PlanningApiClient({
+    baseUrl: PLANNING_SERVICE_URL,
+    getAccessToken,
+  });
+
+  // Bootstrap: ensureActiveWorkspace when feature flag is on
+  useEffect(() => {
+    if (!PLANNING_BACKEND_ENABLED) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const wid = await workspaceSvc.ensureActiveWorkspace();
+        if (!cancelled) setPlanningWorkspaceId(wid);
+      } catch (err) {
+        // Log safe error — do not expose token or internal details
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[Planning] Failed to initialize workspace:', msg);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []); // runs once on mount when flag is true
 
   useEffect(() => {
     if (!personalDocRef.current) return;
@@ -158,7 +213,17 @@ function App() {
   }
 
   if (screen.type === 'tasks') {
-    return <TasksScreen user={userProfile} yjsDoc={personalDocRef.current} onBack={handleBack} onNavigate={handleNavigate} />;
+    return (
+      <TasksScreen
+        user={userProfile}
+        yjsDoc={personalDocRef.current}
+        onBack={handleBack}
+        onNavigate={handleNavigate}
+        planningEnabled={PLANNING_BACKEND_ENABLED}
+        planningWorkspaceId={planningWorkspaceId}
+        planningClient={planningClient}
+      />
+    );
   }
 
   // workspace — fallback (also catches notes/boards/trash while they are placeholders)

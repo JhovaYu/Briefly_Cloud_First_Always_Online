@@ -1,4 +1,3 @@
-import React from 'react';
 import {
     History, FileText, Calendar, CheckSquare, Clock, Archive, Trash2,
     Settings, LogOut, Sun, Moon, Bell, Plus
@@ -8,7 +7,7 @@ import type { UserProfile } from '../../core/domain/UserProfile';
 export interface SidebarProps {
     user: UserProfile;
     currentScreen: 'dashboard' | 'notes' | 'calendar' | 'tasks' | 'schedule' | 'boards' | 'trash';
-    onNavigate: (screen: string) => void;
+    onNavigate: (screen: 'dashboard' | 'notes' | 'calendar' | 'tasks' | 'schedule' | 'boards' | 'trash') => void;
     onLogout: () => void;
     theme: 'light' | 'dark';
     onToggleTheme: () => void;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  History, FileText, Calendar, CheckSquare, Clock, Archive, Trash2,
-  Settings, LogOut, Sun, Moon, Bell, Plus, FileText as FileTextIcon, Sigma, Edit2,
-  RotateCcw, CalendarOff
+  Clock, Plus, Edit2,
+  RotateCcw, Settings, CalendarOff,
+  FileText as FileTextIcon, Sigma,
 } from 'lucide-react';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { Sidebar } from '../components/Sidebar';
@@ -65,7 +65,7 @@ interface ScheduleScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-export function ScheduleScreen({ user, onBack, onNavigate }: ScheduleScreenProps) {
+export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark'
   );

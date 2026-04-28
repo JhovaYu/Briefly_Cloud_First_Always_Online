@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import {
-  History, FileText, Calendar, CheckSquare, Clock, Archive, Trash2,
-  Settings, LogOut, Sun, Moon, Bell, Plus, ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { EventPopup, type CalendarEvent } from '../components/EventPopup';
@@ -32,7 +31,7 @@ interface CalendarScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-export function CalendarScreen({ user, onBack, onNavigate }: CalendarScreenProps) {
+export function CalendarScreen({ user, onNavigate }: CalendarScreenProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('month');
@@ -56,8 +55,6 @@ export function CalendarScreen({ user, onBack, onNavigate }: CalendarScreenProps
     localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
   }, [events]);
 
-  const [currentTime, setCurrentTime] = useState(new Date());
-
   const [popupData, setPopupData] = useState<{ isOpen: boolean; x: number; y: number; date: Date; time?: string }>({
     isOpen: false, x: 0, y: 0, date: new Date()
   });
@@ -66,11 +63,6 @@ export function CalendarScreen({ user, onBack, onNavigate }: CalendarScreenProps
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('fluent-theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
   const goToToday = () => setCurrentDate(new Date());
@@ -92,7 +84,7 @@ export function CalendarScreen({ user, onBack, onNavigate }: CalendarScreenProps
     setPopupData(prev => ({ ...prev, isOpen: false }));
   };
 
-  const openPopup = (e: React.MouseEvent, date: Date, time?: string) => {
+  const openPopup = (e: MouseEvent, date: Date, time?: string) => {
     e.stopPropagation();
     setPopupData({ isOpen: true, x: e.clientX, y: e.clientY, date, time });
   };
