@@ -827,6 +827,8 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | PM-04.2C1 ✅ 2026-04-27 |
 | PM-04.2C2 | Fase 3 | PostgresTaskRepository + idempotency | **Completado** ✅ 2026-04-27 |
 | PM-04.2C2.1 | Fase 3 | Transaction/session lifecycle fix | **Completado** ✅ 2026-04-27 |
+| PM-04.2C2.2 | Fase 3 | Task update persistence fix | **Completado** ✅ 2026-04-28 |
+| PM-04.2C3 | Fase 3 | Planning Postgres final closeout | **Completado** ✅ 2026-04-28 |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
 | PM-06 | Fase 5 | Frontend cloud-first + React Native | Pendiente |
 | PM-07 | Fase 6 | AWS Infra scripts/deploy | Pendiente |
@@ -2083,5 +2085,83 @@ Confirmaciones:
   No git add/commit/push
 
 Siguiente paso: PM-04.2C3 (FK composite tests) o PM-05 Intelligence/Utility
+```
+
+---
+
+### PM-04.2C2.2 — Task Update Persistence Fix (2026-04-28) ✅
+
+```txt
+Fecha: 2026-04-28
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.2C2.2 — fix postgres task update persistence
+
+Problema:
+  PUT /tasks/{id} no persistia el update correctamente en Postgres.
+  El updated_at no cambiaba y el estado no se actualizaba.
+
+Root cause:
+  PostgresTaskRepository.update() hacia session.flush() pero no session.commit() ni merge().
+
+Fix:
+  await session.merge(task) antes del flush asegura que SQLAlchemy tracking se actualice.
+
+Archivo modificado:
+  app/adapters/persistence/postgres_task_repository.py
+
+Validaciones:
+  smoke test (postgres) update step ✅
+  task state in list after update confirms persisted ✅
+
+Fix commit: 2ef2dd1 PM-04.2C2.2 fix postgres task update persistence
+```
+
+---
+
+### PM-04.2C3 — Planning Postgres Final Closeout (2026-04-28) ✅
+
+```txt
+Fecha: 2026-04-28
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.2C3 — Final closeout, validation runtime final
+
+Resumen:
+  Cierre final de PM-04.2 como fase completa.
+
+Validaciones ejecutadas:
+  git status clean: 2ef2dd1 ✅
+  inmemory smoke (11 checks): ALL PASS ✅
+  postgres smoke (11 checks): ALL PASS ✅
+  persistence after restart: PASS ✅
+  pytest 84/84: PASS ✅
+  py_compile (key files): OK ✅
+  docker compose build planning-service: PASS ✅
+
+Runtime details:
+  PLANNING_STORE_TYPE=postgres: confirmed in container env ✅
+  PLANNING_DATABASE_URL: present, internal host planning-postgres:5432 ✅
+  No imprime URL completa: solo se verifica presencia ✅
+  SUPABASE_TEST_JWT: set, no impreso ✅
+  No AWS: no tocado ✅
+  No .env.s3: no existe en este contexto ✅
+
+Persistence after restart:
+  Task persiste despues de restart del service (planning-service only, not postgres).
+
+PM-04.2 completo como fase:
+  PM-04.2C1: DB Foundation ✅
+  PM-04.2C2: Postgres repositories + feature flag ✅
+  PM-04.2C2.1: Transaction/session lifecycle fix ✅
+  PM-04.2C2.2: Task update persistence fix ✅
+  PM-04.2C3: Final closeout validation ✅
+
+Confirmaciones finales:
+  No AWS ✅ No secrets printed ✅ DATABASE_URL no impreso completo ✅
+  No frontend ✅ No Calendar ✅ No .env.s3 ✅
+  No git add/commit/push ✅
+  Default sigue siendo PLANNING_STORE_TYPE=inmemory ✅
+  API contract no cambio ✅
+
+Siguiente paso: PM-05 Intelligence/Utility o integracion frontend.
 ```
 

@@ -808,4 +808,103 @@ El lifecycle transaccional ahora está en `DBSession.__aexit__`:
 - Exception: `session.rollback()` → `session.close()`
 - Inmemory: solo pasa (sin sesión que cerrar)
 
+---
+
+## PM-04.2C2.2 — Task Update Persistence Fix PASS (2026-04-28)
+
+### Problema detectado
+
+El smoke test PM-04.2C2 con Postgres revelo que `PUT /tasks/{id}` no persistia el update. El `updated_at` no cambiaba y el estado no se actualizaba correctamente en la base de datos.
+
+**Root cause:** `PostgresTaskRepository.update()` hacia `session.flush()` pero no `session.commit()`. Con `DBSession.__aexit__` haciendo commit en success, parecia funcionar, pero el `flush()` sin `merge()` causaba que el update no se persistiera correctamente.
+
+**Fix:** `await session.merge(task)` antes del flush asegura que SQLAlchemy tracking se actualice correctamente y el commit persista los cambios.
+
+### Archivo modificado
+
+```
+M  apps/backend/planning-service/app/adapters/persistence/postgres_task_repository.py
+```
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| smoke test (postgres) update step | ✅ PASS |
+| task state in list after update confirms persisted | ✅ PASS |
+
+**Fix commit:** `2ef2dd1 PM-04.2C2.2 fix postgres task update persistence`
+
+**PM-04.2C2.2 listo para revisión APEX.**
+
+---
+
+## PM-04.2C3 — Planning Postgres Final Closeout PASS (2026-04-28)
+
+### Resumen
+
+Cierre final de PM-04.2 como fase completa. Validación runtime final, documentación actualizada.
+
+### Validaciones ejecutadas
+
+| Validación | Resultado |
+|---|---|
+| git status clean | ✅ 2ef2dd1 |
+| inmemory smoke (11 checks) | ✅ ALL PASS |
+| postgres smoke (11 checks) | ✅ ALL PASS |
+| persistence after restart (only planning-service restarted, not postgres) | ✅ PASS |
+| pytest 84/84 | ✅ PASS |
+| py_compile (key files) | ✅ OK |
+| docker compose build planning-service | ✅ PASS |
+
+### Runtime details validados
+
+| Detalle | Valor |
+|---|---|
+| PLANNING_STORE_TYPE=postgres | ✅ confirmed in container env |
+| PLANNING_DATABASE_URL | ✅ present, internal host planning-postgres:5432 |
+| DB host interno | planning-postgres:5432 |
+| No imprime URL completa | ✅ solo se verifica presencia |
+| SUPABASE_TEST_JWT | ✅ set, no impreso |
+| No AWS | ✅ no tocado |
+| No .env.s3 | ✅ no existe en este contexto |
+
+### Persistence after restart test
+
+1. Crear workspace + task-list + task en postgres mode
+2. Verificar task existe en list
+3. Reiniciar SOLO planning-service (docker compose stop/start)
+4. NO reiniciar planning-postgres
+5. GET /tasks confirma task persiste con state correcto
+
+**Resultado:** Task persiste después de restart del service.
+
+### PM-04.2标记为完成
+
+PM-04.2 es la fase completa de Postgres persistence para planning-service:
+
+- PM-04.2C1: DB Foundation (SQLAlchemy, asyncpg, Alembic, models) ✅
+- PM-04.2C2: Postgres repositories + PLANNING_STORE_TYPE feature flag ✅
+- PM-04.2C2.1: Transaction/session lifecycle fix ✅
+- PM-04.2C2.2: Task update persistence fix ✅
+- PM-04.2C3: Final closeout validation ✅
+
+### Confirmaciones finales
+
+- No AWS tocado ✅
+- No secrets printed ✅
+- DATABASE_URL nunca impreso completo ✅
+- No frontend ✅
+- No Calendar ✅
+- No .env.s3 ✅
+- No git add/commit/push ✅
+- Default sigue siendo `PLANNING_STORE_TYPE=inmemory` ✅
+- API contract no cambió ✅
+
+### Siguiente paso
+
+PM-04.2 completo. Planning-service con Postgres persistence listo para integración frontend o PM-05 (Intelligence/Utility services).
+
+**PM-04.2C3 listo para revisión APEX.**
+
 
