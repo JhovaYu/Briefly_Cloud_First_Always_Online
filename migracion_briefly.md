@@ -827,6 +827,9 @@ Validar que el sistema sobrevive la demo de 2 horas.
 | PM-04.2 | Fase 3 | Planning Service Postgres/Supabase DB | PM-04.2C1 ✅ 2026-04-27 |
 | PM-04.2C2 | Fase 3 | PostgresTaskRepository + idempotency | **Completado** ✅ 2026-04-27 |
 | PM-04.2C2.1 | Fase 3 | Transaction/session lifecycle fix | **Completado** ✅ 2026-04-27 |
+| PM-04.4B1 | Fase 3 | Planning frontend infrastructure | **Completado** ✅ 2026-04-28 |
+| PM-04.4B2 | Fase 3 | TasksScreen cloud bootstrap | **Completado** ✅ 2026-04-28 |
+| DEPLOY-01A | Deploy | Public URL discovery + CORS config | Pendiente |
 | PM-04.2C2.2 | Fase 3 | Task update persistence fix | **Completado** ✅ 2026-04-28 |
 | PM-04.2C3 | Fase 3 | Planning Postgres final closeout | **Completado** ✅ 2026-04-28 |
 | PM-05 | Fase 4 | Intelligence + Utility Services | Pendiente |
@@ -2163,5 +2166,89 @@ Confirmaciones finales:
   API contract no cambio ✅
 
 Siguiente paso: PM-05 Intelligence/Utility o integracion frontend.
+```
+
+---
+
+### PM-04.4B1 — Planning Frontend Infrastructure (2026-04-28) ✅
+
+```txt
+Fecha: 2026-04-28
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.4B1 — Infraestructura frontend para TasksScreen cloud
+
+Resumen:
+  Infrastructure frontend para conectar TasksScreen al planning-service cloud.
+
+Archivos creados:
+  packages/shared/src/logic/PlanningApiClient.ts
+  packages/shared/src/logic/workspaceService.ts
+  packages/shared/src/domain/Entities.ts (actualizado con PlanningTask, etc.)
+  apps/desktop/src/ui/hooks/usePlanningTasks.ts
+  apps/desktop/src/ui/screens/TasksScreen.tsx (actualizado con cloud mode)
+
+Feature flag:
+  VITE_PLANNING_BACKEND_ENABLED=false (default preserva local/Yjs)
+
+Confirmaciones:
+  packages/shared build ✅
+  apps/desktop build ✅
+  No AWS ✅ No secrets printed ✅
+
+Siguiente paso: PM-04.4B2 — bootstrap lifecycle + auth
+```
+
+---
+
+### PM-04.4B2 — TasksScreen Cloud Bootstrap (2026-04-28) ✅
+
+```txt
+Fecha: 2026-04-28
+Agente: Claude Code CLI (Minimax M2.7)
+Fase: PM-04.4B2 — TasksScreen cloud bootstrap completo
+
+Resumen:
+  Bugs corregidos: auth lifecycle, persistSession, workspaceService cache,
+  usePlanningTasks auto-fetch, TasksScreen bootstrap.
+
+Bugs corregidos:
+  - Bootstrap effect useEffect([], []) no re-intentaba post-login
+    → Depende de cloudSessionAvailable (onAuthStateChange)
+  - WorkspaceService/PlanningApiClient recreados cada render
+    → useMemo wrapping
+  - usePlanningTasks no auto-fetch al cambiar workspaceId null→real
+    → useEffect([loadAll]) + isInitialized
+  - TasksScreen bootstrap no esperaba isInitialized
+  - Cache de workspace limpiado por cualquier error
+    → Solo limpia en 403/404
+  - createClient sin persistSession
+    → auth: { persistSession: true, autoRefreshToken: true }
+
+CORS dev resuelto con Vite proxy:
+  vite.config.ts: /api/workspace → localhost:8001, /api/planning → localhost:8003
+  .env.example: VITE_PLANNING_SERVICE_URL=/api/planning
+               VITE_WORKSPACE_SERVICE_URL=/api/workspace
+
+Validacion manual exitosa:
+  Login Supabase ✅
+  Badge cloud aparece ✅
+  Crear tarea ✅
+  Cambiar estado ✅
+  Borrar tarea ✅
+  Persistencia tras reload ✅
+  VITE_PLANNING_BACKEND_ENABLED=false preserva local/Yjs ✅
+
+Deuda tecnica:
+  - CORS packaged/prod requiere headers reales o reverse proxy
+  - Sync local/Yjs ↔ cloud REST no implementado
+
+Commit: 823a7ed PM-04.4B2 connect TasksScreen to planning cloud backend
+
+Confirmaciones:
+  No AWS ✅ No secrets printed ✅ No .env.s3 ✅
+  packages/shared build ✅ apps/desktop build ✅
+  planning_api_smoke.py 11/11 ✅
+
+Siguiente paso: DEPLOY-01A — Public URL discovery + CORS production config
 ```
 

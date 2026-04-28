@@ -52,6 +52,9 @@ Este archivo es la bitácora auditable de ejecución.
 - [x] PM-04.2C2.1 — Transaction/session lifecycle fix ✅ PASS (2026-04-27)
 - [x] PM-04.2C2.2 — Task update persistence fix ✅ PASS (2026-04-28)
 - [x] PM-04.2C3 — Planning Postgres final closeout ✅ PASS (2026-04-28)
+- [x] PM-04.4B1 — Planning frontend infrastructure ✅ PASS (2026-04-28)
+- [x] PM-04.4B2 — TasksScreen cloud bootstrap ✅ PASS (2026-04-28)
+- [ ] DEPLOY-01A — Public URL discovery + CORS configuration
 - [ ] PM-05 — Intelligence/Utility
 - [ ] PM-06 — Frontend cloud-first + React Native integration
 - [ ] PM-07 — AWS deployment

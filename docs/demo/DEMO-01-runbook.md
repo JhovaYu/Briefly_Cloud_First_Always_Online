@@ -1,7 +1,7 @@
 # DEMO-01 — Demo Runbook: Cloud-First Backend con PostgreSQL Persistence
 
 **Fecha:** 2026-04-28
-**HEAD:** `f9018ed PM-04.2C3 close planning postgres persistence`
+**HEAD:** `823a7ed PM-04.4B2 connect TasksScreen to planning cloud backend`
 **Scope:** Documentación y comandos — sin implementación nueva
 
 ---
@@ -15,7 +15,7 @@ Demostrar que:
 3. Planning-service ofrece REST API con PostgreSQL real persistence
 4. Persistence after restart está validada
 5. CRDT/S3 snapshots fueron validados en PM-03E (evidencia ya disponible)
-6. El frontend desktop existe pero la integración con Planning cloud-backend es el siguiente slice
+6. El frontend desktop tiene integración Planning cloud funcional (PM-04.4B2) — TasksScreen conecta a planning-service via Vite proxy en dev, badge cloud, CRUD completo
 
 **Audiencia:** Profesor — confirmó que S3 + PostgreSQL está bien, camino actual está bien, costos/AWS Console Importantes.
 
@@ -109,6 +109,18 @@ docker compose ps
 # NO ejecutar sin preguntar al profesor
 #aws sts get-caller-identity  # solo si explicitly requested
 ```
+
+### Planning UI Cloud (PM-04.4B2) — nota dev
+
+El frontend desktop (`apps/desktop/`) ahora tiene integración cloud funcional:
+- TasksScreen conecta a planning-service via Vite proxy en dev (`/api/planning`, `/api/workspace`)
+- Badge ☁️ cloud aparece cuando `VITE_PLANNING_BACKEND_ENABLED=true`
+- CRUD de tareas funciona end-to-end
+- Modo local/Yjs preservado con `VITE_PLANNING_BACKEND_ENABLED=false`
+
+Limitaciones conocidas:
+- Sync local/Yjs ↔ cloud REST no implementado (TasksScreen usa un path u otro)
+- CORS packaged/prod requiere headers reales o reverse proxy Nginx
 
 ### Warm-up commands (orden estricto)
 

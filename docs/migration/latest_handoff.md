@@ -907,4 +907,148 @@ PM-04.2 completo. Planning-service con Postgres persistence listo para integraci
 
 **PM-04.2C3 listo para revisión APEX.**
 
+---
+
+## PM-04.4B1 — Planning Frontend Infrastructure PASS (2026-04-28)
+
+### Resumen
+
+PM-04.4B1 implementó la infraestructura frontend para conectar TasksScreen al planning-service cloud backend.
+
+### Infraestructura agregada
+
+**Packages/shared (`packages/shared/src/`):**
+
+- `logic/PlanningApiClient.ts` — cliente REST stateless para planning-service
+- `logic/workspaceService.ts` — cliente para workspace-service (ensureActiveWorkspace)
+- `domain/Entities.ts` — tipos `PlanningTask`, `PlanningTaskList`, `CreatePlanningTaskInput`, etc.
+
+**Desktop app (`apps/desktop/src/`):**
+
+- `ui/hooks/usePlanningTasks.ts` — hook React para tasks cloud (listTaskLists, listTasks, createTask, updateTask, deleteTask, isInitialized)
+- `ui/screens/TasksScreen.tsx` — TasksScreen actualizado con cloud mode: badge ☁️, loading states, bootstrap de task-list "Personal", CRUD operations
+
+### Decisiones registradas
+
+| Decisión | Detalle |
+|---|---|
+| Feature flag | `VITE_PLANNING_BACKEND_ENABLED=false` default preserva local/Yjs |
+| Base URLs | `/api/planning` y `/api/workspace` (proxy Vite en dev) |
+| Task list | Crea "Personal" por defecto si no existe |
+| ID generation | Client-generated UUIDs en POST |
+
+### .env.example placeholders
+
+```
+VITE_PLANNING_BACKEND_ENABLED=false
+VITE_PLANNING_SERVICE_URL=/api/planning
+VITE_WORKSPACE_SERVICE_URL=/api/workspace
+```
+
+### Validaciones
+
+| Validación | Resultado |
+|---|---|
+| packages/shared build | ✅ PASS |
+| apps/desktop build | ✅ PASS |
+| No test files | ✅ (sin tests en desktop) |
+
+**PM-04.4B1 listo para revisión APEX.**
+
+---
+
+## PM-04.4B2 — TasksScreen Cloud Bootstrap PASS (2026-04-28)
+
+### Resumen
+
+PM-04.4B2 integró completamente TasksScreen con el planning-service cloud backend, corrigiendo múltiples bugs de lifecycle React y auth.
+
+### Bugs corregidos
+
+| Bug | Fix |
+|---|---|
+| Bootstrap effect `useEffect(..., [])` no re-intentaba post-login | Depende de `cloudSessionAvailable` (onAuthStateChange) |
+| WorkspaceService/PlanningApiClient recreados cada render | Envoltos en `useMemo` |
+| usePlanningTasks no auto-fetch al cambiar workspaceId null→real | `useEffect` con `[loadAll]` + `isInitialized` |
+| TasksScreen bootstrap no esperaba `isInitialized` | Efecto depende de `cloud.isInitialized` |
+| Cache de workspace limpiado por cualquier error (network/CORS) | Solo limpia en 403/404 |
+| `createClient` sin `persistSession` | Agregado `auth: { persistSession: true, autoRefreshToken: true }` |
+
+### Auth flow corregido
+
+1. Login → `signInWithPassword` → session en memoria
+2. `onAuthStateChange` actualiza `cloudSessionAvailable = true`
+3. Bootstrap effect re-ejecuta → `ensureActiveWorkspace()` se llama
+4. `planningWorkspaceId` se setea → TasksScreen recibe workspaceId
+5. `usePlanningTasks.loadAll()` fetches taskLists y tasks
+6. `isInitialized = true` → bootstrap de task-list corre
+7. `personalListId` se setea → create/update/delete funcionan
+
+### CORS dev — Vite proxy
+
+```typescript
+// vite.config.ts
+server: {
+  proxy: {
+    '/api/workspace': { target: 'http://localhost:8001', changeOrigin: true, rewrite: ... },
+    '/api/planning':  { target: 'http://localhost:8003', changeOrigin: true, rewrite: ... },
+  },
+}
+```
+
+Para dev local, cambiar `.env` a:
+```
+VITE_PLANNING_SERVICE_URL=/api/planning
+VITE_WORKSPACE_SERVICE_URL=/api/workspace
+```
+
+### Validación manual exitosa
+
+- Login Supabase ✅
+- Badge ☁️ cloud aparece ✅
+- Crear tarea ✅
+- Cambiar estado ✅
+- Borrar tarea ✅
+- Persistencia tras reload ✅
+- `VITE_PLANNING_BACKEND_ENABLED=false` preserva local/Yjs ✅
+
+### Deuda técnica
+
+| Item | Status |
+|---|---|
+| CORS en packaged/prod | Requiere headers CORS reales en backends o reverse proxy |
+| Sync local/Yjs ↔ cloud REST | No implementado — TasksScreen usa un path u otro, no ambos |
+| Supabase `getSession()` null post-reload si refresh token expira | Pendiente |
+
+### Archivos modificados
+
+```
+M apps/desktop/src/App.tsx                    — cloudSessionAvailable state + auth listener + bootstrap
+M apps/desktop/src/ui/hooks/usePlanningTasks.ts — isInitialized + auto-fetch
+M apps/desktop/src/ui/screens/TasksScreen.tsx   — bootstrap + cloud status UI
+M apps/desktop/vite.config.ts                 — dev proxy CORS
+M apps/desktop/.env.example                 — proxy URLs
+M apps/desktop/.gitignore                   — protect .env
+M packages/shared/src/logic/IdentityManager.ts — persistSession + autoRefreshToken
+M packages/shared/src/logic/workspaceService.ts — cache clear only on 403/404
+```
+
+### Validaciones
+
+| Validación | Resultado |
+|---|---|
+| packages/shared build | ✅ PASS |
+| apps/desktop build | ✅ PASS |
+| planning_api_smoke.py | ✅ PASS 11/11 |
+| bsecretcheck | ✅ PASS |
+| No test files | ✅ (desktop sin tests) |
+
+### git commit
+
+```
+823a7ed PM-04.4B2 connect TasksScreen to planning cloud backend
+```
+
+**PM-04.4B2 listo para revisión APEX PRIME.**
+
 
