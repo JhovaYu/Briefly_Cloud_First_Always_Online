@@ -1,0 +1,201 @@
+# docker-compose.ec2.yml — Standalone EC2 deployment, no internal ports published.
+#
+# IMPORTANT: This is a STANDALONE file, NOT an override.
+# Use ONLY with: docker compose -f docker-compose.ec2.yml up
+# Do NOT combine with docker-compose.yml — that would re-expose internal ports.
+#
+# Only nginx port 80 is published. All backend services are internal to Docker network.
+# Security group on EC2 must ONLY open: 22 (your IP), 80 (0.0.0.0/0)
+
+version: "3.8"
+
+services:
+  workspace-service:
+    build:
+      context: ./apps/backend/workspace-service
+      dockerfile: Dockerfile
+    container_name: workspace-service
+    # No ports: — internal only in Docker network
+    environment:
+      - SERVICE_PORT=8001
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_JWT_ISSUER=${SUPABASE_JWT_ISSUER:-https://gcbwysprkqsfakaqsara.supabase.co/auth/v1}
+      - SUPABASE_JWT_AUDIENCE=authenticated
+      - SUPABASE_AUTH_STRATEGY=jwks
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL:-https://gcbwysprkqsfakaqsara.supabase.co/auth/v1/.well-known/jwks.json}
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+
+  collaboration-service:
+    build:
+      context: ./apps/backend/collaboration-service
+      dockerfile: Dockerfile
+    container_name: collaboration-service
+    # No ports: — internal only
+    environment:
+      - SERVICE_PORT=8002
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=${ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:-false}
+      - TICKET_TTL_SECONDS=${TICKET_TTL_SECONDS:-60}
+      - DOCUMENT_STORE_TYPE=${DOCUMENT_STORE_TYPE:-local}
+      - DOCUMENT_STORE_PATH=/data/collab-snapshots
+      - DOCUMENT_PERIODIC_SNAPSHOT_ENABLED=${DOCUMENT_PERIODIC_SNAPSHOT_ENABLED:-true}
+      - DOCUMENT_SNAPSHOT_INTERVAL_SECONDS=${DOCUMENT_SNAPSHOT_INTERVAL_SECONDS:-30}
+      - DOCUMENT_EMPTY_ROOM_GRACE_SECONDS=${DOCUMENT_EMPTY_ROOM_GRACE_SECONDS:-5}
+      - MAX_SNAPSHOT_BYTES=${MAX_SNAPSHOT_BYTES:-52428800}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+    volumes:
+      - collab-snapshots:/data/collab-snapshots
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+
+  planning-service:
+    build:
+      context: ./apps/backend/planning-service
+      dockerfile: Dockerfile
+    container_name: planning-service
+    # No ports: — internal only
+    environment:
+      - SERVICE_PORT=8003
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - PLANNING_STORE_TYPE=postgres
+      - PLANNING_DATABASE_URL=postgresql+asyncpg://briefly:${PLANNING_DB_PASSWORD:-briefly_dev_password}@planning-postgres:5432/briefly_planning
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+    depends_on:
+      planning-postgres:
+        condition: service_healthy
+
+  intelligence-service:
+    build:
+      context: ./apps/backend/intelligence-service
+      dockerfile: Dockerfile
+    container_name: intelligence-service
+    # No ports: — internal only
+    environment:
+      - SERVICE_PORT=8004
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+
+  utility-service:
+    build:
+      context: ./apps/backend/utility-service
+      dockerfile: Dockerfile
+    container_name: utility-service
+    # No ports: — internal only
+    environment:
+      - SERVICE_PORT=8005
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+
+  planning-postgres:
+    image: postgres:16-alpine
+    container_name: planning-postgres
+    # No ports: — internal only
+    environment:
+      POSTGRES_DB: briefly_planning
+      POSTGRES_USER: briefly
+      POSTGRES_PASSWORD: ${PLANNING_DB_PASSWORD:-briefly_dev_password}
+    volumes:
+      - pg-planning-data:/var/lib/postgresql/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U briefly -d briefly_planning"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+    container_name: nginx
+    ports:
+      - "80:80"
+    environment:
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+    mem_limit: 64m
+    depends_on:
+      - workspace-service
+      - collaboration-service
+      - planning-service
+      - intelligence-service
+      - utility-service
+    networks:
+      - briefly-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep nginx && wget --spider -q http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  briefly-internal:
+    driver: bridge
+
+volumes:
+  collab-snapshots:
+  pg-planning-data:

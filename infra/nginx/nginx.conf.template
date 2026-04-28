@@ -18,40 +18,39 @@ upstream workspace {
         server utility-service:8005;
     }
 
-    # Health check endpoint at nginx level
     server {
         listen 80;
 
-        location /health {
+        # ── SPA static frontend ─────────────────────────────────────
+        # Must be first — catches all non-API routes and serves index.html
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # ── Health (no auth) ────────────────────────────────────────
+        location = /health {
             return 200 '{"status": "ok", "service": "nginx"}';
             add_header Content-Type application/json;
         }
 
-        # X-Shared-Secret validation for proxied routes
-        # Health endpoints are exempted
-        location ~ ^/api/workspaces/ {
-            set $expected_secret "${SHARED_SECRET}";
-
-            if ($http_x_shared_secret != "${SHARED_SECRET}") {
-                return 401 '{"error": "unauthorized"}';
-            }
-
-            rewrite ^/api/workspaces/(.*) /$1 break;
+        # ── Browser-facing API routes (no X-Shared-Secret required) ───
+        # Authorization: Bearer <Supabase JWT> is validated by backends, not nginx.
+        # Nginx injects X-Shared-Secret upstream for service-to-service auth if needed.
+        location ~ ^/api/workspace/ {
+            rewrite ^/api/workspace/(.*) /$1 break;
             proxy_pass http://workspace;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            # Inject shared secret for internal service-to-service calls (backends ignore it)
+            proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
         }
 
         location ~ ^/api/planning/ {
-            set $expected_secret "${SHARED_SECRET}";
-
-            if ($http_x_shared_secret != "${SHARED_SECRET}") {
-                return 401 '{"error": "unauthorized"}';
-            }
-
             rewrite ^/api/planning/(.*) /$1 break;
             proxy_pass http://planning;
             proxy_http_version 1.1;
@@ -59,15 +58,10 @@ upstream workspace {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
         }
 
         location ~ ^/api/intelligence/ {
-            set $expected_secret "${SHARED_SECRET}";
-
-            if ($http_x_shared_secret != "${SHARED_SECRET}") {
-                return 401 '{"error": "unauthorized"}';
-            }
-
             rewrite ^/api/intelligence/(.*) /$1 break;
             proxy_pass http://intelligence;
             proxy_http_version 1.1;
@@ -75,15 +69,10 @@ upstream workspace {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
         }
 
         location ~ ^/api/utility/ {
-            set $expected_secret "${SHARED_SECRET}";
-
-            if ($http_x_shared_secret != "${SHARED_SECRET}") {
-                return 401 '{"error": "unauthorized"}';
-            }
-
             rewrite ^/api/utility/(.*) /$1 break;
             proxy_pass http://utility;
             proxy_http_version 1.1;
@@ -91,15 +80,12 @@ upstream workspace {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
         }
 
+        # ── WebSocket /collaboration (no auth at nginx level) ────────
+        # Browser uses Supabase JWT — nginx only does header forwarding
         location ~ ^/collab/ {
-            set $expected_secret "${SHARED_SECRET}";
-
-            if ($http_x_shared_secret != "${SHARED_SECRET}") {
-                return 401 '{"error": "unauthorized"}';
-            }
-
             proxy_pass http://collaboration;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
@@ -108,6 +94,7 @@ upstream workspace {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
             proxy_read_timeout 86400;
         }
     }
