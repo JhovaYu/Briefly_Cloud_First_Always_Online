@@ -201,6 +201,57 @@ class TestPostgresTaskRepositorySave:
             with pytest.raises(DuplicateResourceError):
                 await repo.save(task2)
 
+    @pytest.mark.asyncio
+    async def test_save_update_persists_across_sessions(self, session_maker, _uuid, _now):
+        """Verify that is_update=True actually flushes changes to DB and a fresh session sees them."""
+        task_id = _uuid()
+        workspace_id = _uuid()
+        now = _now()
+
+        # Session 1: create task
+        async with session_maker() as session:
+            repo = PostgresTaskRepository(session)
+            task = Task(
+                id=task_id,
+                workspace_id=workspace_id,
+                list_id=None,
+                text="Original text",
+                state=TaskState.PENDING,
+                priority=Priority.LOW,
+                assignee_id=None,
+                due_date=None,
+                description=None,
+                tags=["original"],
+                created_at=now,
+                updated_at=now,
+                completed_at=None,
+                created_by="user-1",
+            )
+            await repo.save(task)
+            await session.commit()
+
+        # Session 2: update task via is_update=True, then close session without reopening
+        async with session_maker() as session:
+            repo = PostgresTaskRepository(session)
+            task.text = "Updated text"
+            task.state = TaskState.WORKING
+            task.priority = Priority.HIGH
+            task.updated_at = _now()
+            await repo.save(task, is_update=True)
+            await session.commit()
+        # session is now closed — changes must be in DB
+
+        # Session 3: fresh session — verify find_by_id returns updated values from DB
+        async with session_maker() as session:
+            repo = PostgresTaskRepository(session)
+            found = await repo.find_by_id(task_id)
+            assert found is not None
+            assert found.id == task_id
+            assert found.text == "Updated text"
+            assert found.state == TaskState.WORKING
+            assert found.priority == Priority.HIGH
+            assert "original" in (found.tags or [])
+
 
 class TestPostgresTaskRepositoryFind:
     @pytest.mark.asyncio

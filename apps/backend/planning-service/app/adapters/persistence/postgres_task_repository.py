@@ -87,7 +87,7 @@ class PostgresTaskRepository(TaskRepository):
                 # The caller (update_task use case) has already modified the task object
                 # with the new values. We just need to merge it.
                 model = _domain_to_model(task)
-                self._session.merge(model)
+                await self._session.merge(model)
                 await self._session.flush()
                 return task
             else:

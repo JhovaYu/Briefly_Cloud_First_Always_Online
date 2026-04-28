@@ -180,6 +180,17 @@ def main():
                  json={"state": "working"})
     results.append(("Update task", ok))
 
+    # 6b. List tasks after update to confirm persistence across sessions
+    ok, body = step("List tasks after update confirms persisted value", 200, "GET",
+                 f"{PLANNING_SVC}/workspaces/{workspace_id}/tasks")
+    if ok and body:
+        found = next((t for t in body.get("tasks", []) if t.get("id") == task_id), None)
+        state_ok = found is not None and found.get("state") == "working"
+        print(f"  task state in list after update: '{found.get('state') if found else 'NOT FOUND'}' (should be 'working')")
+        results.append(("Update persisted (list confirms)", state_ok))
+    else:
+        results.append(("Update persisted (list confirms)", False))
+
     # 7. Delete task
     ok, _ = step("Delete task", 204, "DELETE",
                  f"{PLANNING_SVC}/workspaces/{workspace_id}/tasks/{task_id}")
