@@ -5,7 +5,7 @@
  * When disabled or workspaceId is null, returns empty state and no-ops.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { PlanningApiClient } from '@tuxnotas/shared';
 import type {
     PlanningTask,
@@ -19,6 +19,7 @@ export interface UsePlanningTasksResult {
     taskLists: PlanningTaskList[];
     tasks: PlanningTask[];
     isLoading: boolean;
+    isInitialized: boolean;
     error: string | null;
     refresh: () => Promise<void>;
     createTaskList: (input: CreatePlanningTaskListInput) => Promise<PlanningTaskList | null>;
@@ -35,19 +36,17 @@ export function usePlanningTasks(
     const [taskLists, setTaskLists] = useState<PlanningTaskList[]>([]);
     const [tasks, setTasks] = useState<PlanningTask[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const workspaceIdRef = useRef(workspaceId);
-    workspaceIdRef.current = workspaceId;
-
     const loadAll = useCallback(async () => {
-        if (!enabled || !workspaceIdRef.current) return;
+        if (!enabled || !workspaceId) return;
         setIsLoading(true);
         setError(null);
         try {
             const [lists, allTasks] = await Promise.all([
-                client.listTaskLists(workspaceIdRef.current),
-                client.listTasks(workspaceIdRef.current),
+                client.listTaskLists(workspaceId),
+                client.listTasks(workspaceId),
             ]);
             setTaskLists(lists);
             setTasks(allTasks);
@@ -56,8 +55,14 @@ export function usePlanningTasks(
             setError(msg);
         } finally {
             setIsLoading(false);
+            setIsInitialized(true);
         }
-    }, [client, enabled]);
+    }, [client, enabled, workspaceId]);
+
+    // Auto-fetch when workspaceId appears (null → real id after bootstrap)
+    useEffect(() => {
+        loadAll();
+    }, [loadAll]);
 
     const refresh = useCallback(async () => {
         await loadAll();
@@ -65,9 +70,9 @@ export function usePlanningTasks(
 
     const createTaskList = useCallback(
         async (input: CreatePlanningTaskListInput): Promise<PlanningTaskList | null> => {
-            if (!enabled || !workspaceIdRef.current) return null;
+            if (!enabled || !workspaceId) return null;
             try {
-                const created = await client.createTaskList(workspaceIdRef.current, input);
+                const created = await client.createTaskList(workspaceId, input);
                 setTaskLists(prev => [...prev, created]);
                 return created;
             } catch (err) {
@@ -76,14 +81,14 @@ export function usePlanningTasks(
                 return null;
             }
         },
-        [client, enabled],
+        [client, enabled, workspaceId],
     );
 
     const createTask = useCallback(
         async (input: CreatePlanningTaskInput): Promise<PlanningTask | null> => {
-            if (!enabled || !workspaceIdRef.current) return null;
+            if (!enabled || !workspaceId) return null;
             try {
-                const created = await client.createTask(workspaceIdRef.current, input);
+                const created = await client.createTask(workspaceId, input);
                 setTasks(prev => [...prev, created]);
                 return created;
             } catch (err) {
@@ -92,14 +97,14 @@ export function usePlanningTasks(
                 return null;
             }
         },
-        [client, enabled],
+        [client, enabled, workspaceId],
     );
 
     const updateTask = useCallback(
         async (taskId: string, patch: UpdatePlanningTaskInput): Promise<PlanningTask | null> => {
-            if (!enabled || !workspaceIdRef.current) return null;
+            if (!enabled || !workspaceId) return null;
             try {
-                const updated = await client.updateTask(workspaceIdRef.current, taskId, patch);
+                const updated = await client.updateTask(workspaceId, taskId, patch);
                 setTasks(prev => prev.map(t => (t.id === taskId ? updated : t)));
                 return updated;
             } catch (err) {
@@ -108,14 +113,14 @@ export function usePlanningTasks(
                 return null;
             }
         },
-        [client, enabled],
+        [client, enabled, workspaceId],
     );
 
     const deleteTask = useCallback(
         async (taskId: string): Promise<boolean> => {
-            if (!enabled || !workspaceIdRef.current) return false;
+            if (!enabled || !workspaceId) return false;
             try {
-                await client.deleteTask(workspaceIdRef.current, taskId);
+                await client.deleteTask(workspaceId, taskId);
                 setTasks(prev => prev.filter(t => t.id !== taskId));
                 return true;
             } catch (err) {
@@ -124,13 +129,14 @@ export function usePlanningTasks(
                 return false;
             }
         },
-        [client, enabled],
+        [client, enabled, workspaceId],
     );
 
     return {
         taskLists,
         tasks,
         isLoading,
+        isInitialized,
         error,
         refresh,
         createTaskList,

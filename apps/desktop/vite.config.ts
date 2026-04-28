@@ -26,4 +26,22 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  server: {
+    proxy: {
+      // Proxy /api/workspace/* → workspace-service:8001
+      // Proxy /api/planning/*  → planning-service:8003
+      // Eliminates CORS during development. The backend services do not need
+      // CORS headers because all requests are made server-side by Vite.
+      '/api/workspace': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/api\/workspace/, ''),
+      },
+      '/api/planning': {
+        target: 'http://localhost:8003',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/api\/planning/, ''),
+      },
+    },
+  },
 })

@@ -159,9 +159,14 @@ export class WorkspaceService {
                 await this.getWorkspace(cachedId);
                 // Valid — return cached
                 return cachedId;
-            } catch {
-                // Invalid/404 — clear and fall through
-                this.clearCachedWorkspaceId();
+            } catch (err) {
+                // Only clear cache for 403/404 — network errors, CORS, timeouts
+                // should not invalidate a legitimate cached workspace
+                const msg = err instanceof Error ? err.message : String(err);
+                const isGone = msg.includes('403') || msg.includes('404');
+                if (isGone) {
+                    this.clearCachedWorkspaceId();
+                }
             }
         }
 

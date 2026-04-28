@@ -1,5 +1,5 @@
 /// <reference path="./electron.d.ts" />
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as Y from 'yjs';
 import { IdentityManager, WorkspaceService, PlanningApiClient } from '@tuxnotas/shared';
 import { YjsIndexedDBAdapter } from './infrastructure/persistence/IndexedDBAdapter';
@@ -57,6 +57,11 @@ function App() {
 
   // ── Planning backend state ─────────────────────────────────────
   const [planningWorkspaceId, setPlanningWorkspaceId] = useState<string | null>(null);
+  // Tracks whether Supabase auth session is available (independent of userProfile)
+  const [cloudSessionAvailable, setCloudSessionAvailable] = useState(false);
+
+  // Guard against overlapping bootstrap calls
+  const bootstrapInFlight = useRef(false);
 
   // Stable token accessor for clients (always reads latest session)
   const getAccessToken = async (): Promise<string | null> => {
@@ -66,39 +71,72 @@ function App() {
     return data.session?.access_token ?? null;
   };
 
-  // Workspace service instance (created once)
-  const workspaceSvc = new WorkspaceService({
-    workspaceBaseUrl: WORKSPACE_SERVICE_URL,
-    getAccessToken,
-  });
+  // Workspace service instance — stable across renders
+  const workspaceSvc = useMemo(
+    () =>
+      new WorkspaceService({
+        workspaceBaseUrl: WORKSPACE_SERVICE_URL,
+        getAccessToken,
+      }),
+    [WORKSPACE_SERVICE_URL],
+  );
 
-  // Planning API client instance (created once)
-  const planningClient = new PlanningApiClient({
-    baseUrl: PLANNING_SERVICE_URL,
-    getAccessToken,
-  });
+  // Planning API client instance — stable across renders
+  const planningClient = useMemo(
+    () =>
+      new PlanningApiClient({
+        baseUrl: PLANNING_SERVICE_URL,
+        getAccessToken,
+      }),
+    [PLANNING_SERVICE_URL],
+  );
 
-  // Bootstrap: ensureActiveWorkspace when feature flag is on
+  // Bootstrap: ensureActiveWorkspace when feature flag is on AND Supabase session is available
+  // Depends on cloudSessionAvailable so it re-runs when session becomes available after login
   useEffect(() => {
     if (!PLANNING_BACKEND_ENABLED) return;
+    if (!userProfile) return;
+    if (!cloudSessionAvailable) return;
+    if (bootstrapInFlight.current) return;
+
+    bootstrapInFlight.current = true;
 
     let cancelled = false;
 
     (async () => {
+      const sb = IdentityManager.cloudClient;
+      if (!sb) {
+        console.warn('[Planning] Supabase not configured — cloud planning disabled');
+        return;
+      }
+
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        // Session disappeared between cloudSessionAvailable=true and now
+        return;
+      }
+
       try {
         const wid = await workspaceSvc.ensureActiveWorkspace();
         if (!cancelled) setPlanningWorkspaceId(wid);
       } catch (err) {
-        // Log safe error — do not expose token or internal details
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[Planning] Failed to initialize workspace:', msg);
+        const isAuthError =
+          msg.includes('401') ||
+          msg.includes('Unauthorized') ||
+          msg.includes('No access token');
+        if (!isAuthError) {
+          console.error('[Planning] Failed to initialize workspace:', msg);
+        }
+      } finally {
+        if (!cancelled) bootstrapInFlight.current = false;
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []); // runs once on mount when flag is true
+  }, [PLANNING_BACKEND_ENABLED, userProfile, cloudSessionAvailable, workspaceSvc]);
 
   useEffect(() => {
     if (!personalDocRef.current) return;
@@ -151,15 +189,28 @@ function App() {
     const sb = IdentityManager.cloudClient;
     if (!sb) return;
 
+    // Initialize cloudSessionAvailable from current session
     sb.auth.getSession().then(({ data: { session } }) => {
+      setCloudSessionAvailable(!!session?.access_token);
       if (session && !getUserProfile()) {
         fetchAndSaveProfile(session.user.id, session.user);
       }
     });
 
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
-      if (session && !userProfile) {
-        fetchAndSaveProfile(session.user.id, session.user);
+    // Subscribe to auth changes to keep cloudSessionAvailable in sync
+    // and to clear planningWorkspaceId on sign-out
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+      setCloudSessionAvailable(!!session?.access_token);
+
+      if (!!session?.access_token && !userProfile) {
+        // New login
+        fetchAndSaveProfile(session!.user.id, session!.user);
+      }
+
+      if (event === 'SIGNED_OUT') {
+        // Clear planning state on logout
+        setPlanningWorkspaceId(null);
+        bootstrapInFlight.current = false;
       }
     });
 
@@ -184,6 +235,8 @@ function App() {
   };
 
   const handleLogout = () => {
+    setPlanningWorkspaceId(null);
+    bootstrapInFlight.current = false;
     setScreen({ type: 'profile' });
   };
 

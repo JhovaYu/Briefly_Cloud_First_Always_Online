@@ -10,8 +10,11 @@ import * as Y from 'yjs';
 import type { Task, TaskState, TaskPriority, TaskList } from '@tuxnotas/shared';
 import { TaskService } from '@tuxnotas/shared';
 import type { PlanningApiClient } from '@tuxnotas/shared';
+import type { PlanningTask } from '@tuxnotas/shared';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { Sidebar } from '../components/Sidebar';
+import { usePlanningTasks } from '../hooks/usePlanningTasks';
+import { isoToTimestamp, timestampToIso } from '@tuxnotas/shared';
 
 // ─────────────────────────────────────────────
 // CONSTANTS
@@ -39,6 +42,26 @@ function tsToDateInput(ts?: number): string {
 function dateInputToTs(s: string): number | undefined {
   if (!s) return undefined;
   return new Date(s).getTime();
+}
+
+// ─────────────────────────────────────────────
+// PLANNING → LOCAL TASK MAPPING
+// ─────────────────────────────────────────────
+
+function planningToTask(cloud: PlanningTask): Task {
+  return {
+    id: cloud.id,
+    listId: cloud.list_id ?? '',
+    text: cloud.text,
+    state: cloud.state,
+    assigneeId: cloud.assignee_id,
+    dueDate: isoToTimestamp(cloud.due_date ?? null),
+    description: cloud.description,
+    createdAt: isoToTimestamp(cloud.created_at) ?? Date.now(),
+    completedAt: isoToTimestamp(cloud.completed_at ?? null),
+    priority: cloud.priority,
+    tags: cloud.tags ?? [],
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -591,6 +614,7 @@ export function TasksScreen({
   onNavigate,
   planningEnabled,
   planningWorkspaceId,
+  planningClient,
 }: TasksScreenProps) {
   const serviceRef = useRef<TaskService | null>(null);
   const [personalListId, setPersonalListId] = useState<string | null>(null);
@@ -608,6 +632,19 @@ export function TasksScreen({
     text: string;
     timeoutId: ReturnType<typeof setTimeout>;
   } | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  // Cloud planning hook — always called, works safely with enabled=false
+  const cloud = usePlanningTasks(planningClient!, planningWorkspaceId ?? null, planningEnabled === true);
+
+  // Ref to guard bootstrap effect against repeated executions
+  // Reset when workspaceId changes so bootstrap re-runs for a new workspace
+  const cloudBootstrapped = useRef(false);
+  const prevWorkspaceId = useRef<string | null>(null);
+  if (prevWorkspaceId.current !== planningWorkspaceId) {
+    cloudBootstrapped.current = false;
+    prevWorkspaceId.current = planningWorkspaceId ?? null;
+  }
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark');
   const toggleTheme = () => {
@@ -617,8 +654,44 @@ export function TasksScreen({
     localStorage.setItem('fluent-theme', newTheme);
   };
 
-  // Initialize TaskService and resolve (or create) the personal TaskList
+  // Bootstrap cloud task-list (create "Personal" if none exist)
+  // Guard with cloudBootstrapped ref to avoid loop
+  // Wait for cloud.isInitialized before bootstrapping to avoid creating duplicate lists
   useEffect(() => {
+    if (!planningEnabled || !planningWorkspaceId) return;
+    if (!cloud.isInitialized) return;
+    if (cloudBootstrapped.current) return;
+
+    if (cloud.taskLists.length === 0) {
+      cloud.createTaskList({
+        id: crypto.randomUUID(),
+        name: 'Personal',
+      });
+    } else {
+      cloudBootstrapped.current = true;
+      setPersonalListId(cloud.taskLists[0].id);
+      cloud.refresh();
+    }
+  }, [planningEnabled, planningWorkspaceId, cloud.isInitialized, cloud.taskLists.length, cloud]);
+
+  // Cloud mode: load tasks from hook when bootstrap is ready
+  useEffect(() => {
+    if (!planningEnabled || !cloud.taskLists.length) return;
+    // Keep personalListId in sync with first cloud list
+    if (!personalListId || cloud.taskLists[0]?.id !== personalListId) {
+      setPersonalListId(cloud.taskLists[0].id);
+    }
+    // Clear local error once cloud is ready
+    if (cloud.isInitialized && personalListId) {
+      setLocalError(null);
+    }
+    // Map cloud tasks → local Task[]
+    setTasks(cloud.tasks.map(planningToTask));
+  }, [planningEnabled, cloud.tasks, cloud.taskLists, cloud.isInitialized, personalListId]);
+
+  // Local mode: Yjs-based personal list initialization
+  useEffect(() => {
+    if (planningEnabled) return;
     const svc = new TaskService(yjsDoc);
     serviceRef.current = svc;
 
@@ -628,10 +701,11 @@ export function TasksScreen({
       : svc.createTaskList('Personal', user.id);
 
     setPersonalListId(list.id);
-  }, [yjsDoc, user.id]);
+  }, [yjsDoc, user.id, planningEnabled]);
 
-  // Reactively read tasks from Y.Map — re-renders on remote changes too
+  // Local mode: reactively read tasks from Y.Map
   useEffect(() => {
+    if (planningEnabled) return;
     if (!personalListId) return;
     const tasksMap = yjsDoc.getMap<Task>('tasks');
     const refresh = () => {
@@ -640,7 +714,7 @@ export function TasksScreen({
     refresh(); // initial load
     tasksMap.observe(refresh);
     return () => tasksMap.unobserve(refresh);
-  }, [yjsDoc, personalListId]);
+  }, [yjsDoc, personalListId, planningEnabled]);
 
   // ── Shortcut global: Shift+N → abrir modal de nueva tarea ──
   useEffect(() => {
@@ -675,27 +749,46 @@ export function TasksScreen({
     tags: string[];
     dueDateStr: string;
   }) => {
-    if (!serviceRef.current || !personalListId) return;
+    if (planningEnabled && !personalListId) {
+      // personalListId is set after cloud bootstrap — if missing, show error
+      setLocalError('Workspace cloud no está listo. Espera a que termine de cargar.');
+      return;
+    }
+    if (!personalListId) return;
 
-    serviceRef.current.addTask(
-      personalListId,
-      data.text,
-      user.id,
-      dateInputToTs(data.dueDateStr),
-    );
-
-    // DEBT(tasks): TaskService.addTask() no acepta priority/tags/state/description.
-    //              Se hace un segundo updateTask() como workaround.
-    //              Resolver cuando se refactorice TaskService en Fase 2.
-    const all = serviceRef.current.getTasks(personalListId);
-    const created = all.sort((a, b) => b.createdAt - a.createdAt)[0];
-    if (created && (data.priority || data.tags.length || data.state !== 'pending' || data.description)) {
-      serviceRef.current.updateTask(created.id, {
-        priority: data.priority,
-        tags: data.tags,
+    if (planningEnabled) {
+      // Cloud path: create via hook
+      cloud.createTask({
+        id: crypto.randomUUID(),
+        list_id: personalListId,
+        text: data.text,
         state: data.state,
+        priority: data.priority,
+        due_date: timestampToIso(dateInputToTs(data.dueDateStr) ?? null),
         description: data.description || undefined,
+        tags: data.tags,
       });
+    } else {
+      // Local path: Yjs via TaskService
+      if (!serviceRef.current) return;
+      serviceRef.current.addTask(
+        personalListId,
+        data.text,
+        user.id,
+        dateInputToTs(data.dueDateStr),
+      );
+      // DEBT(tasks): TaskService.addTask() no acepta priority/tags/state/description.
+      //              Se hace un segundo updateTask() como workaround.
+      const all = serviceRef.current.getTasks(personalListId);
+      const created = all.sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (created && (data.priority || data.tags.length || data.state !== 'pending' || data.description)) {
+        serviceRef.current.updateTask(created.id, {
+          priority: data.priority,
+          tags: data.tags,
+          state: data.state,
+          description: data.description || undefined,
+        });
+      }
     }
 
     setFormOpen(false);
@@ -714,21 +807,44 @@ export function TasksScreen({
     tags: string[];
     dueDateStr: string;
   }) => {
-    if (!editingTask || !serviceRef.current) return;
-    serviceRef.current.updateTask(editingTask.id, {
-      text: data.text,
-      description: data.description || undefined,
-      state: data.state,
-      priority: data.priority,
-      tags: data.tags,
-      dueDate: dateInputToTs(data.dueDateStr),
-    });
+    if (!editingTask || !personalListId) return;
+
+    if (planningEnabled) {
+      // Cloud path
+      cloud.updateTask(editingTask.id, {
+        text: data.text,
+        description: data.description || undefined,
+        state: data.state,
+        priority: data.priority,
+        tags: data.tags,
+        due_date: timestampToIso(dateInputToTs(data.dueDateStr) ?? null),
+        list_id: personalListId,
+      });
+    } else {
+      // Local path
+      if (!serviceRef.current) return;
+      serviceRef.current.updateTask(editingTask.id, {
+        text: data.text,
+        description: data.description || undefined,
+        state: data.state,
+        priority: data.priority,
+        tags: data.tags,
+        dueDate: dateInputToTs(data.dueDateStr),
+      });
+    }
+
     setFormOpen(false);
     setEditingTask(undefined);
   };
 
   const handleDelete = (id: string) => {
-    // If there's already a pending delete, flush it immediately before queuing a new one
+    if (planningEnabled) {
+      // Cloud path: immediate delete (no undo window in B2)
+      cloud.deleteTask(id);
+      return;
+    }
+
+    // Local path: soft delete with 5s undo window
     if (pendingDelete) {
       clearTimeout(pendingDelete.timeoutId);
       serviceRef.current?.deleteTask(pendingDelete.id);
@@ -747,17 +863,30 @@ export function TasksScreen({
   const cycleState = (id: string) => {
     const order: TaskState[] = ['pending', 'working', 'done'];
     const task = tasks.find(t => t.id === id);
-    if (!task || !serviceRef.current) return;
+    if (!task || !personalListId) return;
     const next = order[(order.indexOf(task.state) + 1) % order.length];
-    serviceRef.current.updateTask(id, { state: next });
+
+    if (planningEnabled) {
+      cloud.updateTask(id, { state: next });
+    } else {
+      serviceRef.current?.updateTask(id, { state: next });
+    }
   };
 
   const handleKanbanDrop = (taskId: string, newState: TaskState) => {
-    serviceRef.current?.updateTask(taskId, { state: newState });
+    if (planningEnabled) {
+      cloud.updateTask(taskId, { state: newState });
+    } else {
+      serviceRef.current?.updateTask(taskId, { state: newState });
+    }
   };
 
   const handleInlineRename = (id: string, newText: string) => {
-    serviceRef.current?.updateTask(id, { text: newText });
+    if (planningEnabled) {
+      cloud.updateTask(id, { text: newText });
+    } else {
+      serviceRef.current?.updateTask(id, { text: newText });
+    }
   };
 
   const openCreateWithState = (s: TaskState) => {
@@ -857,6 +986,28 @@ export function TasksScreen({
               <div style={{ height: '4px', borderRadius: '4px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${progressPct}%`, background: 'var(--color-success)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
               </div>
+            </div>
+          )}
+
+          {/* ── Cloud status indicator ── */}
+          {localError && (
+            <div style={{ fontSize: '13px', color: 'var(--color-error)', flexShrink: 0, padding: '4px 8px', background: 'rgba(239,68,68,0.06)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {localError}
+            </div>
+          )}
+          {!localError && planningEnabled && !planningWorkspaceId && !cloud.error && (
+            <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontStyle: 'italic', flexShrink: 0 }}>
+              Inicializando workspace cloud…
+            </div>
+          )}
+          {!localError && planningEnabled && planningWorkspaceId && !cloud.isInitialized && (
+            <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontStyle: 'italic', flexShrink: 0 }}>
+              Cargando tareas cloud…
+            </div>
+          )}
+          {!localError && planningEnabled && cloud.error && (
+            <div style={{ fontSize: '13px', color: 'var(--color-error)', flexShrink: 0, padding: '4px 8px', background: 'rgba(239,68,68,0.06)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+              Modo cloud no disponible: {cloud.error}
             </div>
           )}
 

@@ -8,7 +8,12 @@ export class IdentityManager {
      */
     static initializeCloud(url: string, key: string): SupabaseClient {
         if (!this._supabaseClient) {
-            this._supabaseClient = createClient(url, key);
+            this._supabaseClient = createClient(url, key, {
+                auth: {
+                    persistSession: true,
+                    autoRefreshToken: true,
+                },
+            });
         }
         return this._supabaseClient;
     }
