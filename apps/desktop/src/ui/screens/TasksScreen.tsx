@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import * as Y from 'yjs';
 import type { Task, TaskState, TaskPriority, TaskList } from '@tuxnotas/shared';
-import { TaskService } from '@tuxnotas/shared';
+import { TaskService, createUuid } from '@tuxnotas/shared';
 import type { PlanningApiClient } from '@tuxnotas/shared';
 import type { PlanningTask } from '@tuxnotas/shared';
 import type { UserProfile } from '../../core/domain/UserProfile';
@@ -664,7 +664,7 @@ export function TasksScreen({
 
     if (cloud.taskLists.length === 0) {
       cloud.createTaskList({
-        id: crypto.randomUUID(),
+        id: createUuid(),
         name: 'Personal',
       });
     } else {
@@ -759,7 +759,7 @@ export function TasksScreen({
     if (planningEnabled) {
       // Cloud path: create via hook
       cloud.createTask({
-        id: crypto.randomUUID(),
+        id: createUuid(),
         list_id: personalListId,
         text: data.text,
         state: data.state,

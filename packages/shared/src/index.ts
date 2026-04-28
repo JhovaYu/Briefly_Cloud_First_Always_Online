@@ -4,4 +4,5 @@ export * from './logic/TaskService';
 export * from './logic/IdentityManager';
 export * from './logic/PlanningApiClient';
 export * from './logic/workspaceService';
+export * from './logic/uuid';
 export * from './crypto/SeedPhrase';
