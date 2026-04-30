@@ -11,6 +11,25 @@ git status --short --untracked-files=all
 ```
 **Esperado:** sin output (directorio limpio)
 
+## B1. Remote EC2 Demo (DEPLOY-01C)
+
+**URL:** http://13.221.217.108
+**When to use:** Demo pública desde cualquier dispositivo (no requiere Docker local).
+
+| # | Verificación | Pass/Fail |
+|---|---|---|
+| 1 | `curl http://13.221.217.108/` → 200 | ☐ |
+| 2 | `curl http://13.221.217.108/health` → 200 | ☐ |
+| 3 | `curl http://13.221.217.108/api/workspace/health` → 200 | ☐ |
+| 4 | `curl http://13.221.217.108/api/planning/health` → 200 | ☐ |
+| 5 | Browser: http://13.221.217.108 loads | ☐ |
+| 6 | Login with Supabase email/password | ☐ |
+| 7 | Navigate to Tasks — badge ☁️ cloud visible | ☐ |
+| 8 | Create task — appears in list | ☐ |
+| 9 | Change task state (pending → working → done) | ☐ |
+| 10 | Open in second browser — task visible | ☐ |
+| 11 | Open in mobile — task visible | ☐ |
+
 ---
 
 ## 2. Safety Helpers

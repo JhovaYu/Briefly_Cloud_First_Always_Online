@@ -76,6 +76,59 @@ Demostrar que:
 
 ---
 
+## B1. Remote EC2 Demo Path (DEPLOY-01C)
+
+**URL:** http://13.221.217.108
+**Scope:** Demo cloud-first funcionando en EC2 público, accesible desde cualquier dispositivo.
+
+### Pre-Demo Health Verification (from any machine)
+
+```bash
+curl http://13.221.217.108/                  # → 200 frontend
+curl http://13.221.217.108/health           # → 200 nginx
+curl http://13.221.217.108/api/workspace/health  # → 200 workspace-service
+curl http://13.221.217.108/api/planning/health   # → 200 planning-service
+```
+
+### Demo Steps
+
+1. **Abrir navegador** → http://13.221.217.108
+2. **Login** → Supabase email/password (credencial de prueba)
+3. **Tasks cloud** → Navegar a Tasks, verificar badge ☁️
+4. **Crear tarea** → text, state, priority, due date
+5. **Cambiar estado** → working → done
+6. **Segundo navegador/dispositivo** → abrir mismo URL, login mismo usuario
+7. **Confirmar sync** → tarea creada en browser A visible en browser B
+8. **Movil** → abrir http://13.221.217.108 en Chrome móvil, misma cuenta, mismas tareas
+
+### Limitations to Mention to Professor
+
+- **HTTP temporary** — no HTTPS, browser may show "Not secure" warning
+- **Mobile UI not optimized** — responsive but not pixel-perfect
+- **Local/Yjs ↔ cloud no auto-sync** — TasksScreen with `VITE_PLANNING_BACKEND_ENABLED=true` uses cloud only; `flag=false` preserves local/Yjs but does not sync to cloud
+- **Public IP may change** — if EC2 is stopped/started, URL must be re-verified
+
+### Fallback if URL Fails
+
+1. Check EC2 is running in AWS Console
+2. Verify public IP hasn't changed
+3. SSH to EC2:
+   ```bash
+   ssh -i <key>.pem ec2-user@<EC2_IP>
+   ```
+4. Check Docker stack:
+   ```bash
+   docker compose -f docker-compose.ec2.yml ps
+   docker compose -f docker-compose.ec2.yml logs --tail=20
+   ```
+5. If containers are down:
+   ```bash
+   docker compose -f docker-compose.ec2.yml up -d
+   ```
+6. Verify Supabase Redirect URLs include current public IP
+
+---
+
 ## C. Pre-Demo Checklist
 
 ### Día de demo — ejecutar ANTES de empezar

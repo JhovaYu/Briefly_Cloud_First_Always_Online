@@ -282,6 +282,79 @@ location ~ ^/collab/ {
 
 ---
 
+## Current Deployed Demo
+
+**Public URL:** http://13.221.217.108
+**Status:** ✅ ACTIVE — deployed and smoke-tested (2026-04-28)
+
+### Remote Health Checks
+
+From any internet-connected machine:
+
+```bash
+# Frontend static
+curl http://13.221.217.108/                    # → 200 index.html (SPA)
+
+# Nginx health
+curl http://13.221.217.108/health             # → 200 {"status":"ok","service":"nginx"}
+
+# Workspace service (via nginx proxy)
+curl http://13.221.217.108/api/workspace/health  # → 200 {"status":"ok","service":"workspace-service"}
+
+# Planning service (via nginx proxy)
+curl http://13.221.217.108/api/planning/health  # → 200 {"status":"ok","service":"planning-service"}
+curl http://13.221.217.108/api/planning/healthz  # → 200 {"status":"ok","service":"planning-service"}
+```
+
+### Manual Smoke Checklist
+
+From any browser:
+
+| Test | Command/Action | Expected |
+|---|---|---|
+| Frontend loads | Open http://13.221.217.108 | App UI renders, no crash |
+| Login | Supabase email/password login | Auth succeeds, no redirect error |
+| Tasks cloud badge | Navigate to Tasks | ☁️ badge visible, "cloud" indicated |
+| Create task | Add new task | Task appears in list |
+| Change state | Mark task as working/done | State persists after reload |
+| Multi-browser sync | Chrome ↔ Firefox/mobile | Same tasks visible, changes reflect |
+| Persistence | Reload browser | Tasks remain from previous session |
+
+### Troubleshooting: crypto.randomUUID crash
+
+**Síntoma:** React crashes with `Uncaught TypeError: crypto.randomUUID is not a function` when entering Tasks.
+
+**Root cause:** `crypto.randomUUID()` requires a secure context (HTTPS or localhost). HTTP public IP is not secure, so `crypto.randomUUID` is `undefined`.
+
+**Fix (DEPLOY-01C.1):** All `crypto.randomUUID()` calls replaced with `createUuid()` helper in `packages/shared/src/logic/uuid.ts`. The helper uses fallback paths when Web Crypto is unavailable.
+
+### Cost Warning
+
+**Stop EC2 when not in use.** AWS Academy Learner Lab accounts have limited compute hours. When the demo is not active, stop the EC2 instance to avoid unexpected charges.
+
+To stop:
+```bash
+aws ec2 stop-instances --instance-id <instance_id>
+```
+
+To restart:
+```bash
+aws ec2 start-instances --instance-id <instance_id>
+```
+
+### IP Change Warning
+
+**If EC2 is stopped and started, the public IP will likely change** unless an Elastic IP is assigned. The current URL `http://13.221.217.108` may become invalid after a stop/start cycle.
+
+To avoid this:
+- Assign an Elastic IP (AWS Console → EC2 → Elastic IPs → Allocate)
+- Update Supabase Redirect URLs if the IP changes
+- Update any documentation with the new IP
+
+For temporary demo deployments, stopping/starting is acceptable but the URL must be verified before each demo.
+
+---
+
 ## Rollback
 
 ```bash
