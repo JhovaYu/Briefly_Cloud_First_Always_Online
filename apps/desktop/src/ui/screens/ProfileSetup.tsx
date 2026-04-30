@@ -50,7 +50,7 @@ export function ProfileSetup({ onComplete }: { onComplete: (profile: UserProfile
       <div className="login-left-panel">
         <h1>Plasma tus ideas.<br/><span>Todo en un solo<br/>lugar.</span></h1>
         <p>Una plataforma de notas y organización hecha por estudiantes, para estudiantes.</p>
-        <img src="./logo.png" className="login-left-logo fade-in" alt="Briefly Logo" style={{ marginTop: 60, width: 140, objectFit: 'contain' }} />
+        <img src="./logo.png" className="login-left-logo fade-in" alt="Briefly Logo" />
       </div>
 
       <div className="login-right-panel">

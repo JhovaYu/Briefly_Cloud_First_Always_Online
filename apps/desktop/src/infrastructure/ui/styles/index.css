@@ -1067,18 +1067,37 @@ ul[data-type="taskList"] li>div {
 }
 
 .login-left-logo {
-  margin-top: 60px;
-  /* 
-   * ======= ZONA DE MODIFICACIÓN DE TAMAÑO (LOGO) =======
-   * Para hacer que el logo sea más grande, aumenta este valor de width. 
-   * Ejemplo: cambiar de 140px a 240px o 300px.
+  /*
+   * ======= ZONA DE MODIFICACIÓN DEL LOGO (LOGIN) =======
+   * Ajusta estos 3 valores para tunear posición y tamaño.
+   *
+   * --login-logo-size:    Ancho del logo (responsive con clamp).
+   *                        Ejemplos: 320px, clamp(280px, 30vw, 480px), 520px.
+   * --login-logo-offset-x: Offset horizontal en px (positivo = derecha,
+   *                        negativo = izquierda). Default: 0px.
+   * --login-logo-offset-y: Offset vertical en px (positivo = abajo,
+   *                        negativo = arriba). Default: 0px.
+   *
+   * Mobile: el panel izquierdo se oculta en <= 800px,
+   *          estos ajustes no aplican en mobile.
    */
-  width: 280px;
+  --login-logo-size: clamp(380px, 50vw, 620px);
+  --login-logo-offset-x: px;
+  --login-logo-offset-y: 0px;
+
+  width: var(--login-logo-size);
+  max-width: 90%;
+  margin-inline: auto;
+  margin-top: 18px;
+  display: block;
   opacity: 0.9;
   object-fit: contain;
-  /* Al crecer, lo hará siempre empujando desde la esquina superior-izquierda */
-  transform-origin: top left;
-  transition: width 0.3s ease-in-out;
+  transform:
+    translate(var(--login-logo-offset-x), var(--login-logo-offset-y)) scale(1);
+  transform-origin: center center;
+  transition:
+    width 0.3s ease-in-out,
+    transform 0.3s ease-in-out;
 }
 
 .login-right-panel {
@@ -2732,12 +2751,23 @@ body.is-resizing-sidebar * {
    ============================================================ */
 
 @keyframes lp-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
-
