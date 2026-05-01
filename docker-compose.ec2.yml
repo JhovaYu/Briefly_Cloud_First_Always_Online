@@ -103,6 +103,36 @@ services:
       planning-postgres:
         condition: service_healthy
 
+  schedule-service:
+    build:
+      context: ./apps/backend/schedule-service
+      dockerfile: Dockerfile
+    container_name: schedule-service
+    # No ports: — internal only
+    environment:
+      - SERVICE_PORT=8006
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - SHARED_SECRET=${SHARED_SECRET:-changeme}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_JWT_ISSUER=${SUPABASE_JWT_ISSUER:-https://gcbwysprkqsfakaqsara.supabase.co/auth/v1}
+      - SUPABASE_JWT_AUDIENCE=authenticated
+      - SUPABASE_AUTH_STRATEGY=jwks
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL:-https://gcbwysprkqsfakaqsara.supabase.co/auth/v1/.well-known/jwks.json}
+      - WORKSPACE_SERVICE_URL=http://workspace-service:8001
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - briefly-internal
+    restart: unless-stopped
+    depends_on:
+      - workspace-service
+
   intelligence-service:
     build:
       context: ./apps/backend/intelligence-service
@@ -185,6 +215,7 @@ services:
       - workspace-service
       - collaboration-service
       - planning-service
+      - schedule-service
       - intelligence-service
       - utility-service
     networks:

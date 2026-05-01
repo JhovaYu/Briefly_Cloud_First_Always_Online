@@ -18,6 +18,7 @@
 | HTTPS /health | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/health` | 200 | ✅ PASS |
 | HTTPS workspace | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/workspace/health` | 200 | ✅ PASS |
 | HTTPS planning | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/planning/health` | 200 | ✅ PASS |
+| HTTPS schedule | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/schedule/health` | 200 (post-deploy) | ⏳ PENDING |
 | HTTP redirect | `curl -s -o /dev/null -w "%{http_code}" http://briefly.ddns.net/` | 301 | ✅ PASS |
 | Nginx healthcheck | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/nginx-health` | 200 | ✅ PASS |
 | Mobile HTTPS login | APK con `EXPO_PUBLIC_API_BASE_URL=https://briefly.ddns.net` | PASS | ✅ PASS |
@@ -65,7 +66,7 @@ docker compose -f docker-compose.ec2.yml up -d --build nginx
 
 - El container certbot como servicio de renewal automático (`certbot renew` cada 12h) quedó pendiente. Por ahora la emisión fue manual con `docker run`.
 - Si los volúmenes certbot persisten, la renovación puede hacerse manualmente sin re-emitir.
-- `/api/schedule/` sigue pendiente para PM-06F.2 — no incluido en esta configuración.
+- schedule-service in-memory añadido en PM-06F.2 — `/api/schedule/` activo en nginx.
 
 ---
 
@@ -91,8 +92,7 @@ Internet → EC2:80 (HTTP)  → Nginx container → (ACME HTTP-01) + redirect �
 - `/collab/` → collaboration-service:8002 (WebSocket)
 - `/.well-known/acme-challenge/` → certbot webroot
 
-**`/api/schedule/` NO incluido todavía** — queda pendiente para PM-06F.2 cuando schedule-service
-exista en docker-compose.ec2.yml. No añadir upstream ni location `/api/schedule/` hasta entonces.
+- `/api/schedule/` → schedule-service:8006 (in-memory, PM-06F.2 ✅)
 
 **Cambios respecto a DEPLOY-01:**
 - Nginx publica puertos `80` y `443` (antes solo `80`)
@@ -332,7 +332,7 @@ docker compose -f docker-compose.ec2.yml up -d
 
 | Fase | Descripción |
 |---|---|
-| PM-06F.2 | Integrar schedule-service en docker-compose.ec2.yml y nginx `/api/schedule/` |
+| PM-06F.2 | ✅ Integrar schedule-service en docker-compose.ec2.yml y nginx `/api/schedule/` |
 | PM-06F.3 | Mobile schedule screen (Horarios) en app React Native |
 | PM-06G | Android widgets prototype (TaskWidget + ScheduleWidget) |
 
@@ -343,7 +343,7 @@ docker compose -f docker-compose.ec2.yml up -d
 | Archivo | Cambio |
 |---|---|
 | `docker-compose.ec2.yml` | Puerto 443, volúmenes certbot, healthcheck /nginx-health |
-| `infra/nginx/nginx.conf.template` | SSL server block + todas las rutas activas (sin `/api/schedule/`) |
+| `infra/nginx/nginx.conf.template` | SSL server block + todas las rutas activas (con `/api/schedule/`) |
 | `infra/nginx/nginx.http-only.conf.template` | **Nuevo** — HTTP-only bootstrap config (no SSL, ACME + API proxies) |
 | `apps/mobile/.env.example` | `http://` → `https://` |
 | `docs/deploy/DEPLOY-02-https-noip-nginx.md` | Guía completa con resultados de smoke test validados |
