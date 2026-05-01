@@ -1,0 +1,1 @@
+# schedule use_cases placeholder — routes use repository directly for MVP

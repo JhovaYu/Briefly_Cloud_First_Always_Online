@@ -1,0 +1,13 @@
+# FastAPI + Uvicorn
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.6
+pydantic-settings==2.7.1
+# Auth
+PyJWT>=2.9.0
+cryptography>=44.0.0
+# HTTP client for workspace service calls
+httpx>=0.28.1
+# Development
+pytest>=8.3.4
+pytest-asyncio>=0.25.2
