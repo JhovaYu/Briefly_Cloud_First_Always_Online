@@ -1,234 +1,158 @@
-import { useState, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, SafeAreaView, Image } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { getUserProfile, saveUserProfile, getSavedPools, addPool, updatePoolLastOpened, removePool } from '../src/storage';
-import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
-import { useApp } from '../src/AppContext';
-// @ts-ignore
-import type { UserProfile, PoolInfo } from '@tuxnotas/shared';
+import { useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 
-// Extend profile locally just in case
-type LocalProfile = UserProfile & { avatarUri?: string };
+const BACKEND_BASE = 'http://briefly.ddns.net';
 
-export default function Index() {
-    const router = useRouter();
-    const { settings } = useApp();
-    const sf = settings.fontSizeMultiplier; // scale factor
+interface HealthResult {
+  name: string;
+  url: string;
+  status: 'idle' | 'loading' | 'ok' | 'error';
+  latency?: number;
+  error?: string;
+}
 
-    const [profile, setProfile] = useState<LocalProfile | null>(null);
-    const [name, setName] = useState('');
-    const [pools, setPools] = useState<PoolInfo[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [newPoolName, setNewPoolName] = useState('');
-    const [joinId, setJoinId] = useState('');
-    const [creating, setCreating] = useState(false);
+const ENDPOINTS: Pick<HealthResult, 'name' | 'url'>[] = [
+  { name: 'Frontend / Nginx', url: `${BACKEND_BASE}/health` },
+  { name: 'Workspace Service', url: `${BACKEND_BASE}/api/workspace/health` },
+  { name: 'Planning Service', url: `${BACKEND_BASE}/api/planning/health` },
+];
 
-    useEffect(() => {
-        (async () => {
-            const p = await getUserProfile();
-            setProfile(p as LocalProfile);
-            setLoading(false);
-        })();
-    }, []);
-
-    useFocusEffect(
-        useCallback(() => {
-            getSavedPools().then(setPools);
-            getUserProfile().then(p => { if (p) setProfile(p as LocalProfile) });
-        }, [])
-    );
-
-    const handleCreateProfile = async () => {
-        if (!name.trim()) return;
-        const newProfile: LocalProfile = {
-            id: Math.random().toString(36).substr(2, 9),
-            name: name.trim(),
-            color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
-            createdAt: Date.now(),
-        };
-        await saveUserProfile(newProfile);
-        setProfile(newProfile);
+async function checkOne(endpoint: Pick<HealthResult, 'name' | 'url'>): Promise<HealthResult> {
+  const start = Date.now();
+  try {
+    const resp = await fetch(endpoint.url, { method: 'GET' });
+    return {
+      ...endpoint,
+      status: resp.ok ? 'ok' : 'error',
+      latency: Date.now() - start,
+      error: resp.ok ? undefined : `HTTP ${resp.status}`,
     };
-
-    const handleCreatePool = async () => {
-        const poolId = `pool-${Math.random().toString(36).substr(2, 9)}`;
-        const pool: PoolInfo = {
-            id: poolId,
-            name: newPoolName.trim() || 'Mi espacio',
-            icon: 'workspace',
-            lastOpened: Date.now(),
-            createdAt: Date.now(),
-        };
-        await addPool(pool);
-        setCreating(false);
-        setNewPoolName('');
-        await loadPools();
-        router.push({ pathname: `/${poolId}`, params: { name: pool.name } });
+  } catch (err: any) {
+    return {
+      ...endpoint,
+      status: 'error',
+      latency: Date.now() - start,
+      error: err?.message ?? 'network error',
     };
+  }
+}
 
-    const loadPools = async () => {
-        setPools(await getSavedPools());
-    };
+export default function HealthScreen() {
+  const [results, setResults] = useState<HealthResult[]>([]);
+  const [running, setRunning] = useState(false);
 
-    const handleJoinPool = async () => {
-        if (!joinId.trim()) return;
+  useFocusEffect(
+    useCallback(() => {
+      runChecks();
+    }, [])
+  );
 
-        let input = joinId.trim();
-        let poolId = input;
-        let signalingUrl: string | undefined = undefined;
+  const runChecks = useCallback(async () => {
+    setRunning(true);
+    setResults(ENDPOINTS.map(e => ({ ...e, status: 'loading' })));
+    const fetched = await Promise.all(ENDPOINTS.map(e => checkOne(e)));
+    setResults(fetched);
+    setRunning(false);
+  }, []);
 
-        if (input.includes('@')) {
-            const parts = input.split('@');
-            poolId = parts[0];
-            signalingUrl = `ws://${parts[1]}:4444`;
-        }
+  const allOk = results.length > 0 && results.every(r => r.status === 'ok');
+  const anyError = results.length > 0 && results.some(r => r.status === 'error');
 
-        const existingPools = await getSavedPools();
-        const match = existingPools.find(p => p.id === poolId);
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Briefly Mobile</Text>
+        <Text style={styles.subtitle}>Backend Health Check</Text>
 
-        const pool: PoolInfo = {
-            id: poolId,
-            name: match ? match.name : poolId,
-            icon: 'collab',
-            lastOpened: Date.now(),
-            createdAt: match ? match.createdAt : Date.now(),
-            signalingUrl: signalingUrl || (match ? match.signalingUrl : undefined)
-        };
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>App Version</Text>
+          <Text style={styles.infoValue}>{Constants.expoConfig?.version ?? '—'}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Backend</Text>
+          <Text style={styles.infoValue}>{BACKEND_BASE}</Text>
+        </View>
 
-        await addPool(pool);
-        setJoinId('');
-        await loadPools();
+        <TouchableOpacity
+          style={[styles.button, running && styles.buttonDisabled]}
+          onPress={runChecks}
+          disabled={running}
+        >
+          {running ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Verificar servicios</Text>
+          )}
+        </TouchableOpacity>
 
-        router.push({ pathname: `/${poolId}`, params: { signalingUrl: pool.signalingUrl, name: pool.name } });
-    };
-
-    const openPool = async (pool: PoolInfo) => {
-        await updatePoolLastOpened(pool.id);
-        router.push({ pathname: `/${pool.id}`, params: { signalingUrl: pool.signalingUrl, name: pool.name } });
-    };
-
-    const handleOptionsPool = (pool: PoolInfo) => {
-        Alert.alert('Opciones de Espacio', pool.name, [
-            {
-                text: 'Copiar ID para compartir', onPress: async () => {
-                    await Clipboard.setStringAsync(pool.id);
-                    Alert.alert('ID copiado al portapapeles');
-                }
-            },
-            {
-                text: 'Eliminar espacio', style: 'destructive', onPress: async () => {
-                    await removePool(pool.id);
-                    loadPools();
-                }
-            },
-            { text: 'Cancelar', style: 'cancel' }
-        ]);
-    };
-
-    if (loading) return <View style={styles.center}><Text style={{ color: '#fff', fontSize: 14 * sf }}>Cargando...</Text></View>;
-
-    if (!profile) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.center}>
-                    <Text style={[styles.title, { fontSize: 28 * sf }]}>Bienvenido a Fluent</Text>
-                    <Text style={[styles.subtitle, { fontSize: 16 * sf }]}>Configura tu perfil</Text>
-                    <TextInput
-                        style={[styles.input, { fontSize: 14 * sf }]}
-                        placeholder="Tu nombre"
-                        placeholderTextColor="#888"
-                        value={name}
-                        onChangeText={setName}
-                    />
-                    <TouchableOpacity style={styles.button} onPress={handleCreateProfile}>
-                        <Text style={[styles.buttonText, { fontSize: 16 * sf }]}>Comenzar</Text>
-                    </TouchableOpacity>
+        {results.length > 0 && (
+          <View style={styles.results}>
+            {results.map((r) => (
+              <View key={r.name} style={[
+                styles.resultRow,
+                r.status === 'ok' ? styles.resultOk :
+                r.status === 'error' ? styles.resultError :
+                styles.resultLoading
+              ]}>
+                <View style={styles.resultLeft}>
+                  <Text style={styles.resultName}>{r.name}</Text>
+                  <Text style={styles.resultUrl}>{r.url}</Text>
                 </View>
-            </SafeAreaView>
-        );
-    }
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <View>
-                    <Text style={[styles.headerTitle, { fontSize: 20 * sf }]}>Hola, {profile.name}</Text>
-                    <Text style={{ color: '#888', fontSize: 12 * sf }}>Tus espacios</Text>
+                <View style={styles.resultRight}>
+                  {r.status === 'loading' && <ActivityIndicator color="#aeb4ff" size="small" />}
+                  {r.status === 'ok' && (
+                    <Text style={styles.resultOkText}>OK {r.latency != null ? `${r.latency}ms` : ''}</Text>
+                  )}
+                  {r.status === 'error' && (
+                    <Text style={styles.resultErrorText}>{r.error ?? 'ERROR'}</Text>
+                  )}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                    <TouchableOpacity onPress={() => router.push('/profile')}>
-                        <Ionicons name="settings-outline" size={26 * sf} color="#ccc" />
-                    </TouchableOpacity>
-                    {profile.avatarUri ? (
-                        <Image source={{ uri: profile.avatarUri }} style={[styles.avatar, { width: 44 * sf, height: 44 * sf, borderRadius: 22 * sf }]} />
-                    ) : (
-                        <View style={[styles.avatar, { backgroundColor: profile.color, width: 44 * sf, height: 44 * sf, borderRadius: 22 * sf }]} />
-                    )}
-                </View>
-            </View>
+              </View>
+            ))}
+          </View>
+        )}
 
-            <FlatList
-                data={pools}
-                keyExtractor={item => item.id}
-                contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-                ListHeaderComponent={
-                    <View style={{ gap: 12, marginBottom: 20 }}>
-                        {creating ? (
-                            <View style={styles.card}>
-                                <TextInput style={[styles.input, { fontSize: 14 * sf }]} placeholderTextColor="#666" placeholder="Nombre del espacio..." autoFocus value={newPoolName} onChangeText={setNewPoolName} />
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    <TouchableOpacity style={[styles.button, { flex: 1 }]} onPress={handleCreatePool}><Text style={[styles.buttonText, { fontSize: 14 * sf }]}>Crear</Text></TouchableOpacity>
-                                    <TouchableOpacity style={[styles.buttonSecondary, { flex: 1 }]} onPress={() => setCreating(false)}><Text style={[styles.buttonTextSecondary, { fontSize: 14 * sf }]}>Cancelar</Text></TouchableOpacity>
-                                </View>
-                            </View>
-                        ) : (
-                            <TouchableOpacity style={styles.cardNew} onPress={() => setCreating(true)}>
-                                <Text style={[styles.cardNewText, { fontSize: 14 * sf }]}>+ Crear nuevo espacio</Text>
-                            </TouchableOpacity>
-                        )}
-
-                        <View style={[styles.card, { marginTop: 10 }]}>
-                            <Text style={{ color: '#fff', fontSize: 13 * sf, marginBottom: 8, opacity: 0.7 }}>Unirse a espacio</Text>
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                                <TextInput style={[styles.input, { flex: 1, marginBottom: 0, fontSize: 14 * sf }]} placeholderTextColor="#666" placeholder="ID o ID@IP" value={joinId} onChangeText={setJoinId} />
-                                <TouchableOpacity style={styles.buttonSecondary} onPress={handleJoinPool}><Text style={[styles.buttonTextSecondary, { fontSize: 14 * sf }]}>Unirse</Text></TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                }
-                renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.cardPool} onPress={() => openPool(item)} onLongPress={() => handleOptionsPool(item)}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={[styles.poolName, { fontSize: 16 * sf }]}>{item.name}</Text>
-                            <Text style={[styles.poolId, { fontSize: 12 * sf }]} numberOfLines={1}>{item.id}</Text>
-                        </View>
-                        <Text style={[styles.poolDate, { fontSize: 12 * sf, marginLeft: 10 }]}>{new Date(item.lastOpened).toLocaleDateString()}</Text>
-                    </TouchableOpacity>
-                )}
-            />
-        </SafeAreaView>
-    );
+        {results.length > 0 && !running && (
+          <View style={styles.summary}>
+            {allOk ? (
+              <Text style={styles.summaryOk}>✅ Todos los servicios responden</Text>
+            ) : anyError ? (
+              <Text style={styles.summaryError}>⚠️ Algunos servicios no responden</Text>
+            ) : null}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#111' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-    title: { fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-    subtitle: { color: '#aaa', marginBottom: 32 },
-    input: { backgroundColor: '#222', borderRadius: 8, padding: 12, color: '#fff', width: '100%', marginBottom: 16, borderWidth: 1, borderColor: '#333' },
-    button: { backgroundColor: '#fff', borderRadius: 8, padding: 12, width: '100%', alignItems: 'center' },
-    buttonText: { color: '#000', fontWeight: 'bold' },
-    buttonSecondary: { backgroundColor: '#333', borderRadius: 8, padding: 12, alignItems: 'center', justifyContent: 'center' },
-    buttonTextSecondary: { color: '#fff' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-    headerTitle: { fontWeight: 'bold', color: '#fff' },
-    avatar: { width: 36, height: 36, borderRadius: 18 },
-    card: { backgroundColor: '#1a1a1a', padding: 16, borderRadius: 12, marginBottom: 0 },
-    cardNew: { backgroundColor: '#111', padding: 16, borderRadius: 12, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#444' },
-    cardNewText: { color: '#ccc', fontWeight: '500' },
-    cardPool: { backgroundColor: '#1a1a1a', padding: 16, borderRadius: 12, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    poolName: { color: '#fff', fontWeight: '600' },
-    poolId: { color: '#666', marginTop: 4 },
-    poolDate: { color: '#666' }
+  container: { flex: 1, backgroundColor: '#111' },
+  content: { padding: 24, paddingTop: 60 },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  subtitle: { fontSize: 16, color: '#aeb4ff', marginBottom: 32 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  infoLabel: { color: '#666', fontSize: 14 },
+  infoValue: { color: '#ccc', fontSize: 14 },
+  button: { backgroundColor: '#6872c6', borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 32 },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  results: { gap: 12 },
+  resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 10, backgroundColor: '#1a1a1a' },
+  resultOk: { borderLeftWidth: 3, borderLeftColor: '#10b981' },
+  resultError: { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
+  resultLoading: { borderLeftWidth: 3, borderLeftColor: '#aeb4ff' },
+  resultLeft: { flex: 1 },
+  resultName: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  resultUrl: { color: '#555', fontSize: 11 },
+  resultRight: { alignItems: 'flex-end', minWidth: 80 },
+  resultOkText: { color: '#10b981', fontSize: 13, fontWeight: '600' },
+  resultErrorText: { color: '#ef4444', fontSize: 13, fontWeight: '600' },
+  summary: { marginTop: 24, alignItems: 'center' },
+  summaryOk: { color: '#10b981', fontSize: 15, fontWeight: '600' },
+  summaryError: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
 });
