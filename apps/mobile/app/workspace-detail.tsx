@@ -151,6 +151,13 @@ export default function WorkspaceDetailScreen() {
                     >
                         <Text style={styles.tasksButtonText}>Ver tareas</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.scheduleButton}
+                        onPress={() => router.push(`/schedule?workspaceId=${encodeURIComponent(workspace.id)}`)}
+                    >
+                        <Text style={styles.scheduleButtonText}>Ver horarios</Text>
+                    </TouchableOpacity>
                 </ScrollView>
             ) : null}
         </View>
@@ -224,6 +231,16 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         padding: 18,
         alignItems: 'center',
+        marginBottom: 12,
     },
     tasksButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+    scheduleButton: {
+        backgroundColor: '#252525',
+        borderRadius: 10,
+        padding: 18,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#333',
+    },
+    scheduleButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
 });

@@ -6,7 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 import { useAuth } from '../src/services/AuthContext';
 
-const BACKEND_BASE = 'http://briefly.ddns.net';
+const BACKEND_BASE =
+    (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://briefly.ddns.net');
 
 interface HealthResult {
   name: string;
@@ -20,6 +21,7 @@ const ENDPOINTS: Pick<HealthResult, 'name' | 'url'>[] = [
   { name: 'Frontend / Nginx', url: `${BACKEND_BASE}/health` },
   { name: 'Workspace Service', url: `${BACKEND_BASE}/api/workspace/health` },
   { name: 'Planning Service', url: `${BACKEND_BASE}/api/planning/health` },
+  { name: 'Schedule Service', url: `${BACKEND_BASE}/api/schedule/health` },
 ];
 
 async function checkOne(endpoint: Pick<HealthResult, 'name' | 'url'>): Promise<HealthResult> {
@@ -54,6 +56,14 @@ function WorkspacesButton({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.workspacesButton} onPress={onPress}>
       <Text style={styles.workspacesButtonText}>Espacios cloud</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ScheduleButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.scheduleButton} onPress={onPress}>
+      <Text style={styles.scheduleButtonText}>Horarios</Text>
     </TouchableOpacity>
   );
 }
@@ -122,6 +132,7 @@ export default function HomeScreen() {
 
         <TasksButton onPress={() => router.push('/tasks')} />
         <WorkspacesButton onPress={() => router.push('/workspaces')} />
+        <ScheduleButton onPress={() => router.push('/schedule')} />
 
         {results.length > 0 && (
           <View style={styles.results}>
@@ -191,6 +202,8 @@ const styles = StyleSheet.create({
   tasksButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
   workspacesButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
   workspacesButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
+  scheduleButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
+  scheduleButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
   results: { gap: 12 },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 10, backgroundColor: '#1a1a1a' },
   resultOk: { borderLeftWidth: 3, borderLeftColor: '#10b981' },
