@@ -41,9 +41,14 @@ server {
         root /var/www/certbot;
     }
 
-    # For browsers that already have HTTPS in their history:
-    # Return 200 with a friendly message — real HTTPS redirect happens
-    # only after certificates are loaded and nginx is reloaded with nginx.conf.template
+    # Internal Docker healthcheck — consistent endpoint for health checks
+    location = /nginx-health {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"ok","service":"nginx"}';
+    }
+
+    # Return 200 with frontend — real HTTPS redirect happens after certificates load
     location / {
         root /usr/share/nginx/html;
         index index.html;

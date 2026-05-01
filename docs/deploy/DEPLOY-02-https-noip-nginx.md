@@ -48,6 +48,13 @@ exista en docker-compose.ec2.yml. No añadir upstream ni location `/api/schedule
 
 **IMPORTANTE:** Los puertos internos 8001-8006 NO deben estar abiertos. Todos los backends son internos a Docker.
 
+### Healthcheck endpoint
+
+Docker healthcheck usa `http://127.0.0.1:80/nginx-health` — endpoint interno que siempre retorna `200 {"status":"ok"}`
+incluso cuando el server HTTP :80 está en modo redirect a HTTPS.
+
+`/health` público sigue funcionando en HTTPS (puerto 443) y como inline JSON en el server block 443.
+
 ---
 
 ## Prerrequisitos
