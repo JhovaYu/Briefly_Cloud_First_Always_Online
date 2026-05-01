@@ -20,7 +20,7 @@
 | Fase | Descripción | Entregable |
 |---|---|---|
 | **PM-06B** | Expo Prebuild skeleton + health check | ✅ `app/index.tsx` health screen, `app.json` configurado |
-| **PM-06C** | Auth email/password + Supabase session | Login screen, session persistencia con expo-secure-store |
+| **PM-06C** | Auth email/password + Supabase session | ✅ Login screen (`login.tsx`), session persistence via expo-secure-store + `@supabase/supabase-js`, `AuthProvider`/`useAuth` in `AuthContext.tsx`, `index.tsx` redirects based on session, `home.tsx` shows user + health checks + logout |
 | **PM-06C2** | Google OAuth (POST DEPLOY-01D HTTPS) | OAuth flow con deep links `briefly://` |
 | **PM-06D** | Tasks cloud CRUD | PlanningApiClient + tasks screen completo |
 | **PM-06E** | Pools/Workspaces read | WorkspaceService + pools list |

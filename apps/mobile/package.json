@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^13.0.0",
+    "@supabase/supabase-js": "^2.105.1",
     "@tuxnotas/shared": "*",
     "buffer": "^5.7.1",
     "event-target-shim": "^6.0.2",
