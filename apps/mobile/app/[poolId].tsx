@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Key
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { Task, TaskList, TaskService } from '@tuxnotas/shared';
+import { useApp } from '../src/AppContext';
 import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { Awareness } from 'y-protocols/awareness';
@@ -21,6 +22,9 @@ export default function PoolDetail() {
     const [newTaskText, setNewTaskText] = useState('');
     const [newListName, setNewListName] = useState('');
     const [creatingList, setCreatingList] = useState(false);
+    const { settings } = useApp();
+    const { width } = Dimensions.get('window');
+    const sf = Math.min(Math.max(settings.fontSizeMultiplier * (width / 390), 0.9), 1.2);
 
     useEffect(() => {
         if (!poolId) return;
