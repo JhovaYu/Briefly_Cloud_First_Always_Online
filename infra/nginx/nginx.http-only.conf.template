@@ -1,3 +1,17 @@
+# HTTP-only bootstrap config for initial certificate issuance.
+# This config does NOT use SSL — it only serves the ACME HTTP-01 challenge
+# and redirects browsers to HTTPS (after certificates exist).
+#
+# Usage sequence:
+#   1. Mount this as nginx.conf.template (swap from nginx.conf.template)
+#   2. docker compose up -d nginx
+#   3. docker compose run --rm certbot certonly --webroot -w /var/www/certbot ...
+#   4. Restore nginx.conf.template (HTTPS)
+#   5. docker compose exec nginx nginx -s reload
+#
+# IMPORTANT: This file MUST be used only during certificate issuance, not for
+# normal HTTPS operation. After certificates are in place, use nginx.conf.template.
+
 upstream workspace {
         server workspace-service:8001;
     }
@@ -26,44 +40,27 @@ server {
     listen 80;
     server_name briefly.ddns.net;
 
-    # ACME HTTP-01 challenge — must be accessible before SSL is available
+    # ACME HTTP-01 challenge — must work BEFORE any certificate exists
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
-    # Redirect everything else to HTTPS
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    server_name briefly.ddns.net;
-
-    ssl_certificate /etc/letsencrypt/live/briefly.ddns.net/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/briefly.ddns.net/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache shared:SSL:10m;
-
-    # ── SPA static frontend ─────────────────────────────────────
+    # For browsers that already have HTTPS in their history:
+    # Return 200 with a friendly message — real HTTPS redirect happens
+    # only after certificates are loaded and nginx is reloaded with nginx.conf.template
     location / {
         root /usr/share/nginx/html;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
 
-    # ── Health (no auth) ────────────────────────────────────────
+    # Health endpoint
     location = /health {
         return 200 '{"status": "ok", "service": "nginx"}';
         add_header Content-Type application/json;
     }
 
-    # ── Browser-facing API routes ───────────────────────────────
-    # Authorization: Bearer <Supabase JWT> is validated by backends, not nginx.
-    # Nginx injects X-Shared-Secret upstream for service-to-service auth if needed.
+    # Proxy to backends (HTTP only during bootstrap)
     location ~ ^/api/workspace/ {
         rewrite ^/api/workspace/(.*) /$1 break;
         proxy_pass http://workspace;
@@ -71,7 +68,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
     }
 
@@ -82,7 +79,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
     }
 
@@ -93,7 +90,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
     }
 
@@ -104,7 +101,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
     }
 
@@ -115,11 +112,11 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
     }
 
-    # ── WebSocket /collab ────────────────────────────────────────
+    # WebSocket (HTTP during bootstrap)
     location ~ ^/collab/ {
         proxy_pass http://collaboration;
         proxy_http_version 1.1;
@@ -128,7 +125,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Shared-Secret "${SHARED_SECRET}";
         proxy_read_timeout 86400;
     }

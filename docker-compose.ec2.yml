@@ -4,8 +4,9 @@
 # Use ONLY with: docker compose -f docker-compose.ec2.yml up
 # Do NOT combine with docker-compose.yml — that would re-expose internal ports.
 #
-# Only nginx port 80 is published. All backend services are internal to Docker network.
-# Security group on EC2 must ONLY open: 22 (your IP), 80 (0.0.0.0/0)
+# Only nginx ports 80 and 443 are published.
+# Security group on EC2 must open: 22 (your IP), 80 (0.0.0.0/0), 443 (0.0.0.0/0)
+# Internal service ports (8001-8006) must NOT be exposed publicly.
 
 version: "3.8"
 
@@ -173,6 +174,10 @@ services:
     container_name: nginx
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - certbot-www:/var/www/certbot:ro
+      - certbot-certs:/etc/letsencrypt:rw
     environment:
       - SHARED_SECRET=${SHARED_SECRET:-changeme}
     mem_limit: 64m
@@ -199,3 +204,5 @@ networks:
 volumes:
   collab-snapshots:
   pg-planning-data:
+  certbot-www:
+  certbot-certs:
