@@ -42,6 +42,14 @@ async function checkOne(endpoint: Pick<HealthResult, 'name' | 'url'>): Promise<H
   }
 }
 
+function TasksButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.tasksButton} onPress={onPress}>
+      <Text style={styles.tasksButtonText}>Tareas</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -103,6 +111,8 @@ export default function HomeScreen() {
             <Text style={styles.buttonText}>Verificar servicios</Text>
           )}
         </TouchableOpacity>
+
+        <TasksButton onPress={() => router.push('/tasks')} />
 
         {results.length > 0 && (
           <View style={styles.results}>
@@ -168,6 +178,8 @@ const styles = StyleSheet.create({
   button: { backgroundColor: '#6872c6', borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 32 },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  tasksButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
+  tasksButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
   results: { gap: 12 },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 10, backgroundColor: '#1a1a1a' },
   resultOk: { borderLeftWidth: 3, borderLeftColor: '#10b981' },
