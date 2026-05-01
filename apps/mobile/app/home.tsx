@@ -50,6 +50,14 @@ function TasksButton({ onPress }: { onPress: () => void }) {
   );
 }
 
+function WorkspacesButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.workspacesButton} onPress={onPress}>
+      <Text style={styles.workspacesButtonText}>Espacios cloud</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -113,6 +121,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
 
         <TasksButton onPress={() => router.push('/tasks')} />
+        <WorkspacesButton onPress={() => router.push('/workspaces')} />
 
         {results.length > 0 && (
           <View style={styles.results}>
@@ -180,6 +189,8 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   tasksButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
   tasksButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
+  workspacesButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
+  workspacesButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
   results: { gap: 12 },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 10, backgroundColor: '#1a1a1a' },
   resultOk: { borderLeftWidth: 3, borderLeftColor: '#10b981' },

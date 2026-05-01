@@ -10,7 +10,7 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
 import { createPlanningClient } from '../src/services/planningClient';
 import { createWorkspaceClient } from '../src/services/workspaceClient';
@@ -47,6 +47,7 @@ function TaskItem({
 
 export default function TasksScreen() {
     const router = useRouter();
+    const { workspaceId: workspaceIdParam } = useLocalSearchParams<{ workspaceId?: string }>();
     const { loading: authLoading, getAccessToken } = useAuth();
     const [tasks, setTasks] = useState<PlanningTask[]>([]);
     const [loading, setLoading] = useState(false);
@@ -61,9 +62,16 @@ export default function TasksScreen() {
         setLoading(true);
         setError(null);
         try {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            const workspaceId = await workspaceClient.ensureActiveWorkspace();
             const planningClient = createPlanningClient(getAccessToken);
+            let workspaceId: string;
+
+            if (workspaceIdParam) {
+                workspaceId = workspaceIdParam;
+            } else {
+                const workspaceClient = createWorkspaceClient(getAccessToken);
+                workspaceId = await workspaceClient.ensureActiveWorkspace();
+            }
+
             const fetched = await planningClient.listTasks(workspaceId);
             setTasks(fetched);
         } catch (err: any) {
@@ -71,7 +79,7 @@ export default function TasksScreen() {
         } finally {
             setLoading(false);
         }
-    }, [getAccessToken]);
+    }, [getAccessToken, workspaceIdParam]);
 
     useEffect(() => {
         if (authLoading) return;
@@ -108,9 +116,16 @@ export default function TasksScreen() {
         setCreating(true);
 
         try {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            const workspaceId = await workspaceClient.ensureActiveWorkspace();
             const planningClient = createPlanningClient(getAccessToken);
+            let workspaceId: string;
+
+            if (workspaceIdParam) {
+                workspaceId = workspaceIdParam;
+            } else {
+                const workspaceClient = createWorkspaceClient(getAccessToken);
+                workspaceId = await workspaceClient.ensureActiveWorkspace();
+            }
+
             const created = await planningClient.createTask(workspaceId, {
                 id: tempId,
                 text,
@@ -136,9 +151,16 @@ export default function TasksScreen() {
         );
 
         try {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            const workspaceId = await workspaceClient.ensureActiveWorkspace();
             const planningClient = createPlanningClient(getAccessToken);
+            let workspaceId: string;
+
+            if (workspaceIdParam) {
+                workspaceId = workspaceIdParam;
+            } else {
+                const workspaceClient = createWorkspaceClient(getAccessToken);
+                workspaceId = await workspaceClient.ensureActiveWorkspace();
+            }
+
             await planningClient.updateTask(workspaceId, taskId, { state: newState });
         } catch {
             loadTasks();
@@ -153,9 +175,16 @@ export default function TasksScreen() {
         setTasks(prev => prev.filter(t => t.id !== taskId));
 
         try {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            const workspaceId = await workspaceClient.ensureActiveWorkspace();
             const planningClient = createPlanningClient(getAccessToken);
+            let workspaceId: string;
+
+            if (workspaceIdParam) {
+                workspaceId = workspaceIdParam;
+            } else {
+                const workspaceClient = createWorkspaceClient(getAccessToken);
+                workspaceId = await workspaceClient.ensureActiveWorkspace();
+            }
+
             await planningClient.deleteTask(workspaceId, taskId);
         } catch {
             setTasks(previous);

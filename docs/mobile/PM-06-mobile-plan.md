@@ -23,7 +23,7 @@
 | **PM-06C** | Auth email/password + Supabase session | ✅ Login screen (`login.tsx`), session persistence via expo-secure-store + `@supabase/supabase-js`, `AuthProvider`/`useAuth` in `AuthContext.tsx`, `index.tsx` redirects based on session, `home.tsx` shows user + health checks + logout |
 | **PM-06C2** | Google OAuth (POST DEPLOY-01D HTTPS) | OAuth flow con deep links `briefly://` |
 | **PM-06D** | Tasks cloud CRUD | ✅ PM-06D DONE — PlanningApiClient + tasks screen completo + workspaceClient.ts + home.tsx botón Tareas |
-| **PM-06E** | Pools/Workspaces read | WorkspaceService + pools list |
+| **PM-06E** | Pools/Workspaces read | ✅ PM-06E DONE — workspaces.tsx list, workspace-detail.tsx with tasks button, home.tsx "Espacios cloud" button, workspaceId param in tasks.tsx. Pool (P2P/Yjs) != Workspace (cloud REST) — `[poolId].tsx` remains P2P, not cloud. No update/delete workspace endpoints in backend.
 | **PM-06F** | Schedule/Calendar UI | ScheduleAdaptado de web |
 | **PM-06G** | Android widgets prototype | TaskWidget + ScheduleWidget en kotlin nativo |
 
