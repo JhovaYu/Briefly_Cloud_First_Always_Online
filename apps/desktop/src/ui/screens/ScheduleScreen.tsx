@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { Sidebar } from '../components/Sidebar';
+import { useScheduleBlocks } from '../hooks/useScheduleBlocks';
+import type { ScheduleApiClient } from '@tuxnotas/shared';
+import { createUuid } from '@tuxnotas/shared';
 
 interface ScheduleEvent {
   id: string;
@@ -63,9 +66,12 @@ interface ScheduleScreenProps {
   user: UserProfile;
   onBack: () => void;
   onNavigate: (screen: string) => void;
+  scheduleEnabled?: boolean;
+  scheduleClient?: ScheduleApiClient;
+  workspaceId?: string | null;
 }
 
-export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
+export function ScheduleScreen({ user, onNavigate, scheduleEnabled, scheduleClient, workspaceId }: ScheduleScreenProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark'
   );
@@ -108,6 +114,28 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
 
   const [showScheduleConfig, setShowScheduleConfig] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Cloud schedule blocks hook
+  const cloud = useScheduleBlocks(scheduleClient!, workspaceId ?? null, !!scheduleEnabled);
+
+  // Map cloud blocks to local ScheduleEvent format for display
+  const cloudEvents: ScheduleEvent[] = cloud.blocks.map(b => {
+    const [startHour, startMin] = b.start_time.split(':').map(Number);
+    const endHour = startHour + Math.floor((startMin + b.duration_minutes) / 60);
+    return {
+      id: b.id,
+      title: b.title,
+      category: '',
+      color: b.color ?? '#6872c6',
+      day: ALL_DAYS[b.day_of_week] ?? 'Lunes',
+      startHour,
+      endHour: endHour,
+      icon: 'file' as const,
+    };
+  });
+
+  // When not in cloud mode, show local events; when in cloud mode, show cloud events
+  const visibleEvents = scheduleEnabled ? cloudEvents : events;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.events, JSON.stringify(events));
@@ -174,8 +202,34 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
     setIsEditing(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!modalData) return;
+
+    if (scheduleEnabled && scheduleClient && workspaceId) {
+      const dayIndex = ALL_DAYS.indexOf(modalData.day);
+      if (isEditing) {
+        const block = cloud.blocks.find(b => b.id === modalData.id);
+        if (block) {
+          await cloud.updateBlock(modalData.id, {
+            title: modalData.title,
+            day_of_week: dayIndex >= 0 ? dayIndex : 0,
+            start_time: `${String(modalData.startHour).padStart(2, '0')}:00`,
+            duration_minutes: (modalData.endHour - modalData.startHour) * 60,
+          });
+        }
+      } else {
+        await cloud.createBlock({
+          id: createUuid(),
+          title: modalData.title,
+          day_of_week: dayIndex >= 0 ? dayIndex : 0,
+          start_time: `${String(modalData.startHour).padStart(2, '0')}:00`,
+          duration_minutes: (modalData.endHour - modalData.startHour) * 60,
+        });
+      }
+      setModalData(null);
+      return;
+    }
+
     let finalData = { ...modalData };
 
     if (isCreatingCategory && newCategoryName.trim()) {
@@ -198,8 +252,14 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
     setModalData(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!modalData) return;
+
+    if (scheduleEnabled && scheduleClient && workspaceId) {
+      await cloud.deleteBlock(modalData.id);
+      setModalData(null);
+      return;
+    }
     setEvents(events.filter(e => e.id !== modalData.id));
     setModalData(null);
   };
@@ -352,6 +412,10 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
           cursor: pointer;
           accent-color: var(--accent);
         }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
       `}</style>
 
       {/* SIDEBAR COPIADO EXACTAMENTE */}
@@ -372,9 +436,29 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
             <img src="./logo.png" alt="Briefly Logo" style={styles.headerLogo} />
             <h1 style={styles.headerTitle}>{config.name}</h1>
+            {scheduleEnabled && (
+              <span style={{ fontSize: 11, color: '#aeb4ff', background: '#252540', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                CLOUD
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {events.length > 0 && (
+            {scheduleEnabled && cloud.error && (
+              <span style={{ fontSize: 11, color: '#f87171', marginRight: 4 }} title={cloud.error}>
+                !
+              </span>
+            )}
+            {scheduleEnabled && (
+              <button
+                className="db2-user-icon-btn"
+                onClick={() => cloud.refresh()}
+                title="Refresh cloud schedule"
+                disabled={cloud.isLoading}
+              >
+                <RotateCcw size={18} style={cloud.isLoading ? { animation: 'spin 1s linear infinite' } : undefined} />
+              </button>
+            )}
+            {visibleEvents.length > 0 && (
               <button
                 className="db2-user-icon-btn"
                 onClick={() => setShowResetConfirm(true)}
@@ -408,6 +492,16 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
               <CalendarOff size={48} color="var(--text-tertiary)" style={{ marginBottom: 16 }} />
               <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)', fontSize: '18px', fontWeight: 600 }}>Ningún horario aquí</h3>
               <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '14px' }}>Haz click para configurar tu horario</p>
+            </div>
+          </div>
+        ) : scheduleEnabled && cloud.isLoading && !cloud.isInitialized ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 32px 32px 32px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <RotateCcw size={32} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }} />
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>Cargando horario desde la nube…</p>
+              {cloud.error && (
+                <p style={{ margin: 0, color: '#f87171', fontSize: '12px', maxWidth: 300, textAlign: 'center' }}>{cloud.error}</p>
+              )}
             </div>
           </div>
         ) : (
@@ -449,7 +543,7 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
                 {/* Day Columns containing absolute events and empty slots */}
                 <div style={styles.dayColumnsAxis}>
                   {config.days.map(day => {
-                    const dayEvents = events.filter(e => e.day === day);
+                    const dayEvents = visibleEvents.filter(e => e.day === day);
                     return (
                       <div key={day} style={styles.dayCol}>
 
@@ -553,31 +647,37 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
               <button
                 className="db2-context-menu-item"
                 onClick={() => {
-                  const evt = events.find(e => e.id === contextMenu.eventId);
+                  const evt = visibleEvents.find(e => e.id === contextMenu.eventId);
                   if (evt) handleOpenEdit(evt);
                   setContextMenu(null);
                 }}>
                 Editar
               </button>
+              {scheduleEnabled ? null : (
               <button
                 className="db2-context-menu-item"
                 onClick={() => {
-                  const evt = events.find(e => e.id === contextMenu.eventId);
+                  const evt = visibleEvents.find(e => e.id === contextMenu.eventId);
                   if (evt) setCopiedEvent(evt);
                   setContextMenu(null);
                 }}>
                 Copiar evento
               </button>
+              )}
               <button
                 className="db2-context-menu-item danger"
                 onClick={() => {
-                  setEvents(events.filter(e => e.id !== contextMenu.eventId));
+                  if (scheduleEnabled && scheduleClient && workspaceId) {
+                    cloud.deleteBlock(contextMenu.eventId!);
+                  } else {
+                    setEvents(events.filter(e => e.id !== contextMenu.eventId));
+                  }
                   setContextMenu(null);
                 }}>
                 Eliminar
               </button>
             </>
-          ) : contextMenu.emptySlot && copiedEvent ? (
+          ) : contextMenu.emptySlot && copiedEvent && !scheduleEnabled ? (
             <button
               className="db2-context-menu-item"
               onClick={() => {
@@ -611,9 +711,13 @@ export function ScheduleScreen({ user, onNavigate }: ScheduleScreenProps) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button style={styles.btnCancel} onClick={() => setShowResetConfirm(false)}>Cancelar</button>
               <button style={styles.btnDanger} onClick={() => {
-                setEvents([]);
-                setScheduleInitialized(false);
-                localStorage.setItem('briefly-schedule-initialized', 'false');
+                if (scheduleEnabled && scheduleClient && workspaceId) {
+                  Promise.all(cloud.blocks.map(b => cloud.deleteBlock(b.id)));
+                } else {
+                  setEvents([]);
+                  setScheduleInitialized(false);
+                  localStorage.setItem('briefly-schedule-initialized', 'false');
+                }
                 setShowResetConfirm(false);
               }}>Borrar todo</button>
             </div>

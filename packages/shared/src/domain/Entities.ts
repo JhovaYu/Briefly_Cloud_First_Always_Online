@@ -169,3 +169,43 @@ export interface PoolInfo {
     createdAt: number;
     signalingUrl?: string;
 }
+
+// ─────────────────────────────────────────────
+// Schedule Service Types (cloud backend)
+// ─────────────────────────────────────────────
+
+export interface ScheduleBlock {
+    id: string;
+    workspace_id: string;
+    title: string;
+    day_of_week: number; // 0=Monday, 6=Sunday
+    start_time: string;  // "HH:MM"
+    duration_minutes: number; // 5-480
+    color: string | null;
+    location: string | null;
+    notes: string | null;
+    created_at: string; // ISO datetime string
+    updated_at: string; // ISO datetime string
+    created_by: string;
+}
+
+export interface CreateScheduleBlockInput {
+    id: string;
+    title: string;
+    day_of_week: number;
+    start_time: string;
+    duration_minutes: number;
+    color?: string | null;
+    location?: string | null;
+    notes?: string | null;
+}
+
+export interface UpdateScheduleBlockInput {
+    title?: string;
+    day_of_week?: number;
+    start_time?: string;
+    duration_minutes?: number;
+    color?: string | null;
+    location?: string | null;
+    notes?: string | null;
+}

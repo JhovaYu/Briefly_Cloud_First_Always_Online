@@ -1,7 +1,7 @@
 /// <reference path="./electron.d.ts" />
 import { useState, useEffect, useRef, useMemo } from 'react';
 import * as Y from 'yjs';
-import { IdentityManager, WorkspaceService, PlanningApiClient } from '@tuxnotas/shared';
+import { IdentityManager, WorkspaceService, PlanningApiClient, ScheduleApiClient } from '@tuxnotas/shared';
 import { YjsIndexedDBAdapter } from './infrastructure/persistence/IndexedDBAdapter';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -19,6 +19,13 @@ const PLANNING_SERVICE_URL =
 const WORKSPACE_SERVICE_URL =
   (import.meta.env.VITE_WORKSPACE_SERVICE_URL as string | undefined) ||
   'http://localhost:8001';
+
+// Schedule backend feature flag — default false preserves localStorage behavior
+const SCHEDULE_BACKEND_ENABLED =
+  import.meta.env.VITE_SCHEDULE_BACKEND_ENABLED === 'true';
+const SCHEDULE_SERVICE_URL =
+  (import.meta.env.VITE_SCHEDULE_SERVICE_URL as string | undefined) ||
+  'http://localhost:8006';
 
 import { addPool, getUserProfile, saveUserProfile, type UserProfile } from './core/domain/UserProfile';
 import { ProfileSetup }  from './ui/screens/ProfileSetup';
@@ -89,6 +96,16 @@ function App() {
         getAccessToken,
       }),
     [PLANNING_SERVICE_URL],
+  );
+
+  // Schedule API client instance — stable across renders
+  const scheduleClient = useMemo(
+    () =>
+      new ScheduleApiClient({
+        baseUrl: SCHEDULE_SERVICE_URL,
+        getAccessToken,
+      }),
+    [SCHEDULE_SERVICE_URL],
   );
 
   // Bootstrap: ensureActiveWorkspace when feature flag is on AND Supabase session is available
@@ -262,7 +279,16 @@ function App() {
   }
 
   if (screen.type === 'schedule') {
-    return <ScheduleScreen user={userProfile} onBack={handleBack} onNavigate={handleNavigate} />;
+    return (
+      <ScheduleScreen
+        user={userProfile}
+        onBack={handleBack}
+        onNavigate={handleNavigate}
+        scheduleEnabled={SCHEDULE_BACKEND_ENABLED && cloudSessionAvailable && !!planningWorkspaceId}
+        scheduleClient={scheduleClient}
+        workspaceId={planningWorkspaceId}
+      />
+    );
   }
 
   if (screen.type === 'tasks') {
