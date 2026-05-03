@@ -6,6 +6,7 @@ from app.ports.token_verifier import TokenVerifier, TokenPayload
 from app.ports.workspace_repository import WorkspaceRepository
 from app.ports.membership_repository import MembershipRepository
 from app.ports.workspace_shared_text_repository import WorkspaceSharedTextRepository
+from app.ports.document_repository import DocumentRepository
 from app.adapters.auth.supabase_jwks_token_verifier import SupabaseJWKSVerifier
 from app.adapters.persistence.in_memory_repositories import (
     InMemoryWorkspaceRepository,
