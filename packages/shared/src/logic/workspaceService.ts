@@ -184,4 +184,26 @@ export class WorkspaceService {
         this.setCachedWorkspaceId(created.id);
         return created.id;
     }
+
+    async getSharedText(workspaceId: string): Promise<{ content: string } | null> {
+        try {
+            const data = await this.request<{ content: string }>(
+                'GET',
+                `/workspaces/${workspaceId}/shared-text`,
+            );
+            return data;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('404')) return null;
+            throw err;
+        }
+    }
+
+    async updateSharedText(workspaceId: string, content: string): Promise<void> {
+        await this.request<void>(
+            'PUT',
+            `/workspaces/${workspaceId}/shared-text`,
+            { content },
+        );
+    }
 }

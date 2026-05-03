@@ -14,11 +14,13 @@ import { application_name } from '../../constants';
 import { ContextMenu } from '../components/ContextMenu';
 import { InlineRename } from '../components/InlineRename';
 import { QrModal } from '../components/QrModal';
+import { SharedTextPanel } from '../components/SharedTextPanel';
+import type { WorkspaceService } from '@tuxnotas/shared';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { exportNoteAs, exportAllPoolAsZip, exportNoteToService } from '../utils/exportHelpers';
 
-export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl }: {
-  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string;
+export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService }: {
+  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string; workspaceService?: WorkspaceService;
 }) {
   const [services, setServices] = useState<AppServices | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -42,6 +44,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl }: 
   const [showSettings, setShowSettings] = useState(false);
   
   const settings = useSettings();
+  const workspaceSvc = workspaceService;
   const [sidebarWidth, setSidebarWidth] = useState<number>(260);
   const isDraggingRef = useRef(false);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -610,6 +613,18 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl }: 
           </div>
         )}
       </div>
+
+      {/* SHARED TEXT PANEL */}
+      {services && activeNoteId && workspaceSvc && (
+        <div className="shared-text-panel-wrapper">
+          <SharedTextPanel
+            workspaceService={workspaceSvc}
+            workspaceId={poolId}
+            activeNoteId={activeNoteId}
+            doc={services.doc}
+          />
+        </div>
+      )}
 
       {/* QR MODAL */}
       {showQr && (

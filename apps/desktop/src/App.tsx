@@ -314,6 +314,7 @@ function App() {
       user={userProfile}
       onBack={handleBack}
       signalingUrl={screen.type === 'workspace' ? screen.signalingUrl : undefined}
+      workspaceService={workspaceSvc}
     />
   );
 }
