@@ -9,7 +9,7 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Extension } from '@tiptap/core';
 import * as Y from 'yjs';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Bold,
@@ -40,11 +40,15 @@ import {
     Loader2,
 } from 'lucide-react';
 
+export interface EditorHandle {
+    getText: () => string;
+}
+
 interface EditorProps {
     doc: Y.Doc;
     provider: any;
     user: { name: string; color: string };
-    noteId: string;          // ← NEW: which note we're editing
+    noteId: string;
     noteTitle: string;
     onTitleChange: (title: string) => void;
 }
@@ -316,7 +320,7 @@ function MarginPopover({
     );
 }
 
-export const Editor = ({ doc, provider, user, noteId, noteTitle, onTitleChange }: EditorProps) => {
+export const Editor = forwardRef<EditorHandle, EditorProps>(({ doc, provider, user, noteId, noteTitle, onTitleChange }, ref) => {
     const [tableMenu, setTableMenu] = useState<TableMenuState>({ visible: false, x: 0, y: 0 });
     const [showMarginPopover, setShowMarginPopover] = useState(false);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -424,6 +428,11 @@ export const Editor = ({ doc, provider, user, noteId, noteTitle, onTitleChange }
             </div>
         );
     }
+
+    // Expose getText() to parent via ref so SharedTextPanel can use editor.getText()
+    useImperativeHandle(ref, () => ({
+        getText: () => editor.getText(),
+    }), [editor]);
 
     const ToolbarButton = ({
         onClick,
@@ -641,4 +650,4 @@ export const Editor = ({ doc, provider, user, noteId, noteTitle, onTitleChange }
             </div>
         </div>
     );
-};
+});

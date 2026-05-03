@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Editor } from '../../infrastructure/ui/components/Editor';
+import { Editor, type EditorHandle } from '../../infrastructure/ui/components/Editor';
 import { TaskBoard } from '../../infrastructure/ui/components/TaskBoard';
 import { AppServices } from '../../infrastructure/AppServices';
 import {
@@ -33,6 +33,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
   const [renamingType, setRenamingType] = useState<'note' | 'notebook'>('note');
   const [collapsedNotebooks, setCollapsedNotebooks] = useState<Set<string>>(new Set());
   const [creatingNotebook, setCreatingNotebook] = useState(false);
+  const editorRef = useRef<EditorHandle>(null);
   const [copied, setCopied] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
@@ -596,6 +597,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
         ) : activeNote && services ? (
           <Editor
             key={activeNote.id}
+            ref={editorRef}
             doc={services.doc}
             provider={services.network.provider}
             user={{ name: user.name, color: user.color }}
@@ -621,7 +623,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
             workspaceService={workspaceSvc}
             workspaceId={cloudWorkspaceId ?? null}
             activeNoteId={activeNoteId}
-            doc={services.doc}
+            getCurrentNoteText={() => editorRef.current?.getText() ?? ''}
           />
         </div>
       )}
