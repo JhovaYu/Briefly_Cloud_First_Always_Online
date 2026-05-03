@@ -1,38 +1,21 @@
 import React, { useState } from 'react';
 import type { WorkspaceService } from '@tuxnotas/shared';
-import type * as Y from 'yjs';
 
 interface SharedTextPanelProps {
   workspaceService: WorkspaceService;
-  workspaceId: string | null;  // cloud workspace UUID, null when not bootstrapped
+  workspaceId: string | null;
   activeNoteId: string | null;
-  doc: Y.Doc;
+  /** Returns the current plain text from the TipTap editor instance. */
+  getCurrentNoteText: () => string;
 }
 
-type Status = 'idle' | 'publishing' | 'published' | 'fetching' | 'error';
-
-const getNoteContentAsText = async (noteId: string, doc: Y.Doc): Promise<string> => {
-  const fragment = doc.getXmlFragment(`note-${noteId}`);
-  const lines: string[] = [];
-  const walk = (node: any) => {
-    if (node.toString) {
-      const str = node.toString();
-      const plain = str.replace(/<[^>]+>/g, '').trim();
-      if (plain) lines.push(plain);
-    }
-    if (node.toArray) {
-      for (const child of node.toArray()) walk(child);
-    }
-  };
-  walk(fragment);
-  return lines.join('\n');
-};
+type Status = 'idle' | 'publishing' | 'published' | 'fetching' | 'error' | 'empty';
 
 export const SharedTextPanel: React.FC<SharedTextPanelProps> = ({
   workspaceService,
   workspaceId,
   activeNoteId,
-  doc,
+  getCurrentNoteText,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
@@ -46,7 +29,15 @@ export const SharedTextPanel: React.FC<SharedTextPanelProps> = ({
     setErrorMessage(null);
 
     try {
-      const content = await getNoteContentAsText(activeNoteId, doc);
+      const content = getCurrentNoteText();
+
+      if (!content.trim()) {
+        setErrorMessage('El editor esta vacio. Escribe algo antes de publicar.');
+        setStatus('empty');
+        setTimeout(() => setStatus('idle'), 3000);
+        return;
+      }
+
       await workspaceService.updateSharedText(workspaceId, content);
       setStatus('published');
       setTimeout(() => setStatus('idle'), 3000);
@@ -81,6 +72,7 @@ export const SharedTextPanel: React.FC<SharedTextPanelProps> = ({
     published: 'Actualizado',
     fetching: 'Obteniendo...',
     error: 'Error',
+    empty: 'Vacio',
   };
 
   return (
