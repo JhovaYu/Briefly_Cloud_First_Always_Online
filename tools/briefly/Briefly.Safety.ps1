@@ -256,28 +256,28 @@ function bredactlog {
         $redacted = $fullText
 
         # AWS Access Key ID (AKIA...)
-        $redacted = $redacted -replace 'AKIA[0-9A-Z]{16}', 'AKIA[REDACTED]'
+        $redacted = $redacted -creplace 'AKIA[0-9A-Z]{16}', 'AKIA[REDACTED]'
         # AWS Access Key ID alternate pattern (ASIA...)
-        $redacted = $redacted -replace 'ASIA[0-9A-Z]{16}', 'ASIA[REDACTED]'
+        $redacted = $redacted -creplace 'ASIA[0-9A-Z]{16}', 'ASIA[REDACTED]'
         # AWS Secret Access Key
-        $redacted = $redacted -replace '(?<=AWS_SECRET_ACCESS_KEY[=\s:"]+)[A-Za-z0-9/+=]{20,}', '[AWS_SECRET_ACCESS_KEY_REDACTED]'
-        $redacted = $redacted -replace '(?<=AWS_ACCESS_KEY_ID[=\s:"]+)[A-Za-z0-9/+=]{16,}', '[AWS_ACCESS_KEY_ID_REDACTED]'
+        $redacted = $redacted -creplace '(?<=AWS_SECRET_ACCESS_KEY[=\s:"]+)[A-Za-z0-9/+=]{20,}', '[AWS_SECRET_ACCESS_KEY_REDACTED]'
+        $redacted = $redacted -creplace '(?<=AWS_ACCESS_KEY_ID[=\s:"]+)[A-Za-z0-9/+=]{16,}', '[AWS_ACCESS_KEY_ID_REDACTED]'
         # AWS Session Token
-        $redacted = $redacted -replace '(?<=AWS_SESSION_TOKEN[=\s:"]+)[A-Za-z0-9/+=,.A-Za-z\-]{50,}', '[AWS_SESSION_TOKEN_REDACTED]'
+        $redacted = $redacted -creplace '(?<=AWS_SESSION_TOKEN[=\s:"]+)[A-Za-z0-9/+=,.A-Za-z\-]{50,}', '[AWS_SESSION_TOKEN_REDACTED]'
         # IQoJb pattern (AWS session token prefix)
-        $redacted = $redacted -replace 'IQoJb[a-zA-Z0-9+/]+', '[IQOJB_REDACTED]'
+        $redacted = $redacted -creplace 'IQoJb[a-zA-Z0-9+/]+', '[IQOJB_REDACTED]'
         # JWT-like strings
-        $redacted = $redacted -replace 'eyJ[A-Za-z0-9+/=]{20,}', '[JWT_REDACTED]'
+        $redacted = $redacted -creplace 'eyJ[A-Za-z0-9+/=]{20,}', '[JWT_REDACTED]'
         # Supabase publishable key
-        $redacted = $redacted -replace 'sb_publishable_[a-zA-Z0-9+/=]{20,}', 'sb_publishable_[REDACTED]'
+        $redacted = $redacted -creplace 'sb_publishable_[a-zA-Z0-9+/=]{20,}', 'sb_publishable_[REDACTED]'
         # Supabase secret key
-        $redacted = $redacted -replace 'sb_secret_[a-zA-Z0-9+/=]{20,}', 'sb_secret_[REDACTED]'
+        $redacted = $redacted -creplace 'sb_secret_[a-zA-Z0-9+/=]{20,}', 'sb_secret_[REDACTED]'
         # Supabase service role
-        $redacted = $redacted -replace '(?<=SUPABASE_SERVICE_ROLE_KEY[=\s:"]+)[A-Za-z0-9+/=]{50,}', '[SUPABASE_SERVICE_ROLE_KEY_REDACTED]'
+        $redacted = $redacted -creplace '(?<=SUPABASE_SERVICE_ROLE_KEY[=\s:"]+)[A-Za-z0-9+/=]{50,}', '[SUPABASE_SERVICE_ROLE_KEY_REDACTED]'
         # Authorization Bearer
-        $redacted = $redacted -replace '(?<=Authorization:\s*Bearer\s+)[A-Za-z0-9_/-]{20,}', '[BEARER_REDACTED]'
+        $redacted = $redacted -creplace '(?<=Authorization:\s*Bearer\s+)[A-Za-z0-9_/-]{20,}', '[BEARER_REDACTED]'
         # Generic Bearer token
-        $redacted = $redacted -replace '(?<=Bearer\s+)[A-Za-z0-9_-]{30,}', '[BEARER_REDACTED]'
+        $redacted = $redacted -creplace '(?<=Bearer\s+)[A-Za-z0-9_-]{30,}', '[BEARER_REDACTED]'
 
         # Pipeline input: stdout only, never touch clipboard
         # Clipboard fallback (no pipe): redact and update clipboard
@@ -347,43 +347,43 @@ function bsecretcheck {
             continue
         }
 
-        if ($content -match "AKIA[0-9A-Z]{16}") {
+        if ($content -cmatch "AKIA[0-9A-Z]{16}") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> AWS Access Key ID" -ForegroundColor Yellow
         }
-        if ($content -match "ASIA[0-9A-Z]{16}") {
+        if ($content -cmatch "ASIA[0-9A-Z]{16}") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> AWS Temp Access Key ID" -ForegroundColor Yellow
         }
-        if ($content -match "IQoJb[a-zA-Z0-9+/]+") {
+        if ($content -cmatch "IQoJb[a-zA-Z0-9+/]+") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> AWS Session Token" -ForegroundColor Yellow
         }
-        if ($content -match "eyJ[A-Za-z0-9+/]{20,}") {
+        if ($content -cmatch "eyJ[A-Za-z0-9+/]{20,}") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> JWT token" -ForegroundColor Yellow
         }
-        if ($content -match "sb_secret_[a-zA-Z0-9+/=]{20,}") {
+        if ($content -cmatch "sb_secret_[a-zA-Z0-9+/=]{20,}") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Supabase secret key" -ForegroundColor Yellow
         }
-        if ($content -match "sb_publishable_[a-zA-Z0-9+/=]{20,}") {
+        if ($content -cmatch "sb_publishable_[a-zA-Z0-9+/=]{20,}") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> Supabase publishable key" -ForegroundColor Yellow
         }
-        if ($content -match "-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----") {
+        if ($content -cmatch "-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----") {
             $found = $true
             Write-Host ""
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
