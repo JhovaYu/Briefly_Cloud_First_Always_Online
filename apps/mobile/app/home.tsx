@@ -44,6 +44,14 @@ async function checkOne(endpoint: Pick<HealthResult, 'name' | 'url'>): Promise<H
   }
 }
 
+function TodayButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.todayButton} onPress={onPress}>
+      <Text style={styles.todayButtonText}>Hoy</Text>
+    </TouchableOpacity>
+  );
+}
+
 function TasksButton({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.tasksButton} onPress={onPress}>
@@ -130,6 +138,7 @@ export default function HomeScreen() {
           )}
         </TouchableOpacity>
 
+        <TodayButton onPress={() => router.push('/today')} />
         <TasksButton onPress={() => router.push('/tasks')} />
         <WorkspacesButton onPress={() => router.push('/workspaces')} />
         <ScheduleButton onPress={() => router.push('/schedule')} />
@@ -198,6 +207,8 @@ const styles = StyleSheet.create({
   button: { backgroundColor: '#6872c6', borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 32 },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  todayButton: { backgroundColor: '#6872c6', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32 },
+  todayButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   tasksButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
   tasksButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
   workspacesButton: { backgroundColor: '#252525', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 32, borderWidth: 1, borderColor: '#333' },
