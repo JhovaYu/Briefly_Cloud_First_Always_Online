@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
+from typing import AsyncIterator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.errors import Unauthorized, AuthServiceUnavailable
 from app.ports.token_verifier import TokenVerifier, TokenPayload
@@ -12,6 +14,12 @@ from app.ports.workspace_permissions import WorkspacePermissions
 from app.adapters.auth.supabase_jwks_token_verifier import SupabaseJWKSVerifier
 from app.adapters.workspace_client import WorkspacePermissionsClient, PermissionDenied, UpstreamUnavailable
 from app.adapters.persistence.in_memory_schedule_repository import InMemoryScheduleBlockRepository
+from app.adapters.persistence.sqlalchemy.database import (
+    create_async_engine_if_not_exists,
+    get_session_factory,
+    dispose_engine,
+)
+from app.adapters.persistence.postgres_schedule_repository import PostgresScheduleBlockRepository
 from app.config.settings import Settings
 
 # auto_error=False gives explicit control over 401/403 behavior
@@ -132,4 +140,63 @@ async def require_workspace_access(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authorization service unavailable",
+        )
+
+
+@dataclass
+class ScheduleDBSession:
+    """Holds session + repo for a single request. Implements async context manager."""
+    session: AsyncSession | None
+    block_repo: ScheduleBlockRepository
+
+    async def __aenter__(self) -> "ScheduleDBSession":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session is not None:
+            if exc_type is not None:
+                await self.session.rollback()
+            else:
+                await self.session.commit()
+            await self.session.close()
+        return None
+
+
+async def get_db() -> AsyncIterator[ScheduleDBSession]:
+    """
+    FastAPI dependency — session-per-request with shared repo.
+
+    For SCHEDULE_STORE_TYPE=postgres:
+      - Opens AsyncSession from factory
+      - Creates PostgresScheduleBlockRepository sharing the session
+      - Commits on success, rollback on exception, close always
+
+    For SCHEDULE_STORE_TYPE=inmemory:
+      - Uses singleton InMemoryScheduleBlockRepository (no session needed)
+      - Session is None; __aexit__ is a no-op for session part
+    """
+    settings = get_settings()
+
+    if settings.SCHEDULE_STORE_TYPE == "postgres":
+        factory = get_session_factory()
+        session = factory()
+        try:
+            block_repo = PostgresScheduleBlockRepository(session)
+            db = ScheduleDBSession(session=session, block_repo=block_repo)
+            async with db:
+                yield db
+        except Exception:
+            await session.close()
+            raise
+
+    elif settings.SCHEDULE_STORE_TYPE == "inmemory":
+        block_repo = get_block_repo()
+        db = ScheduleDBSession(session=None, block_repo=block_repo)
+        async with db:
+            yield db
+
+    else:
+        raise ValueError(
+            f"Invalid SCHEDULE_STORE_TYPE: {settings.SCHEDULE_STORE_TYPE!r}. "
+            "Must be 'inmemory' or 'postgres'."
         )

@@ -332,8 +332,7 @@ docker compose -f docker-compose.ec2.yml up -d
 
 | Fase | Descripción |
 |---|---|
-| PM-06F.2 | ✅ Integrar schedule-service en docker-compose.ec2.yml y nginx `/api/schedule/` |
-| PM-06F.3 | Mobile schedule screen (Horarios) en app React Native |
+| PM-06F.DB | PostgreSQL persistence para schedule-service |
 | PM-06G | Android widgets prototype (TaskWidget + ScheduleWidget) |
 
 ---
@@ -347,3 +346,89 @@ docker compose -f docker-compose.ec2.yml up -d
 | `infra/nginx/nginx.http-only.conf.template` | **Nuevo** — HTTP-only bootstrap config (no SSL, ACME + API proxies) |
 | `apps/mobile/.env.example` | `http://` → `https://` |
 | `docs/deploy/DEPLOY-02-https-noip-nginx.md` | Guía completa con resultados de smoke test validados |
+
+---
+
+## PM-06F.DB: schedule-service PostgreSQL Persistence
+
+### Objetivo
+Reemplazar el almacenamiento in-memory de schedule-service con PostgreSQL real para que los horarios sobrevivan reinicios del contenedor en AWS Learner Lab.
+
+### Decisión arquitectónica
+- Contenedor físico: `planning-postgres` compartido entre planning-service y schedule-service
+- Database lógica: `briefly_schedule` (separada de `briefly_planning`)
+- Esto evita crear un segundo contenedor PostgreSQL y mantenernos dentro de los límites de RAM/CPU de Learner Lab
+- Isolation: misma máquina, diferentes databases — no hay share de schemas
+
+### Schema: tabla `schedule_blocks`
+
+| Columna | Tipo | Notes |
+|---|---|---|
+| `id` | UUID | PK, `gen_random_uuid()` |
+| `workspace_id` | UUID | NOT NULL, índice |
+| `title` | TEXT | NOT NULL |
+| `day_of_week` | INTEGER | 0-6, CHECK constraint |
+| `start_time` | TIME | HH:MM sin timezone |
+| `duration_minutes` | INTEGER | 5-480, CHECK constraint |
+| `color` | TEXT | nullable |
+| `location` | TEXT | nullable |
+| `notes` | TEXT | nullable |
+| `created_at` | TIMESTAMPTZ | server default NOW() |
+| `updated_at` | TIMESTAMPTZ | server default NOW() |
+| `created_by` | UUID | Supabase auth sub |
+
+Índices: `idx_schedule_blocks_workspace_id`, `idx_schedule_blocks_workspace_dow_start`
+
+### Cambio importante: `created_by` como UUID
+El JWT `sub` claim de Supabase es un string UUID. Se convierte a `uuid.UUID` para almacenarse en la DB. Esto permite joins e índices futuros sobre `created_by`. La conversión es necesaria en repository.
+
+### Archivos cambiados
+- `apps/backend/schedule-service/requirements.txt` — +sqlalchemy[asyncio], asyncpg, alembic
+- `apps/backend/schedule-service/app/config/settings.py` — +SCHEDULE_STORE_TYPE, SCHEDULE_DATABASE_URL
+- `apps/backend/schedule-service/app/adapters/persistence/sqlalchemy/` — base.py, models.py, database.py
+- `apps/backend/schedule-service/app/adapters/persistence/postgres_schedule_repository.py` — nuevo repository
+- `apps/backend/schedule-service/alembic/` — alembic.ini, env.py, script.py.mako, versions/001_initial_schedule_blocks.py
+- `apps/backend/schedule-service/app/api/dependencies.py` — +get_db, ScheduleDBSession
+- `apps/backend/schedule-service/app/api/routes.py` — usa get_db en vez de get_block_repo
+- `apps/backend/schedule-service/app/main.py` — +startup/shutdown handlers para engine
+- `apps/backend/schedule-service/entrypoint.sh` — alembic + uvicorn
+- `apps/backend/schedule-service/Dockerfile` — usa entrypoint.sh
+- `docker-compose.yml` — +SCHEDULE_STORE_TYPE, SCHEDULE_DATABASE_URL
+- `docker-compose.ec2.yml` — SCHEDULE_STORE_TYPE=postgres, depends_on planning-postgres healthy
+- `apps/backend/planning-service/init-schedule-db.sh` — init script para crear briefly_schedule
+
+### EC2: Crear database `briefly_schedule` en deployment existente
+
+> ⚠️ Los init scripts de postgres no se re-ejecutan si el volumen Docker ya existe con datos. Si `planning-postgres` ya está corriendo en EC2, la database `briefly_schedule` NO se crea automáticamente.
+
+**Comando seguro para crear la database (sin imprimir secretos):**
+
+```bash
+# Ejecutar dentro del contenedor postgres que ya corre en EC2
+docker exec planning-postgres psql -U briefly -d briefly_planning -c "SELECT 'CREATE DATABASE briefly_schedule' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'briefly_schedule')"
+```
+
+Este comando:
+- Solo crea la DB si no existe (no dá error si ya existe)
+- No imprime passwords ni secrets en output
+- Conecta como el usuario `briefly` ya configurado en el contenedor existente
+- Ejecuta contra `briefly_planning` (no against `postgres` default DB)
+
+Para schedule-service en EC2 con el nuevo código, la base URL sería:
+```
+postgresql+asyncpg://briefly:${PLANNING_DB_PASSWORD}@planning-postgres:5432/briefly_schedule
+```
+(reutiliza la misma variable `PLANNING_DB_PASSWORD` que ya existe en el entorno EC2)
+
+### Smoke test de persistencia
+
+Después de deployar con postgres:
+1. Crear un bloque horario desde mobile o desktop
+2. `docker restart schedule-service`
+3. GET `/api/schedule/workspaces/{id}/schedule-blocks` — el bloque debe seguir ahí
+
+### Notas
+- Mobile y desktop NO necesitan cambios — el API contract es idéntico
+- In-memory sigue disponible con `SCHEDULE_STORE_TYPE=inmemory` (default para dev local)
+- Nginx route `/api/schedule/` no cambia
+- Auth JWT no cambia

@@ -7,7 +7,7 @@ from app.api.schemas import (
     ScheduleBlockResponse,
     ScheduleBlockListResponse,
 )
-from app.api.dependencies import get_current_user, get_block_repo, require_workspace_access, AuthenticatedUser, get_workspace_client
+from app.api.dependencies import get_current_user, get_db, require_workspace_access, AuthenticatedUser, get_workspace_client, ScheduleDBSession
 from app.ports.schedule_block_repository import ScheduleBlockRepository
 from app.ports.workspace_permissions import WorkspacePermissions
 from app.domain.schedule_block import ScheduleBlock
@@ -21,10 +21,10 @@ async def get_schedule_blocks(
     workspace_id: str,
     auth_user: AuthenticatedUser = Depends(get_current_user),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
-    block_repo: ScheduleBlockRepository = Depends(get_block_repo),
+    db: ScheduleDBSession = Depends(get_db),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
-    blocks = await block_repo.list_by_workspace(workspace_id)
+    blocks = await db.block_repo.list_by_workspace(workspace_id)
     return ScheduleBlockListResponse(
         blocks=[
             ScheduleBlockResponse(
@@ -52,12 +52,12 @@ async def create_schedule_block(
     req: CreateScheduleBlockRequest,
     auth_user: AuthenticatedUser = Depends(get_current_user),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
-    block_repo: ScheduleBlockRepository = Depends(get_block_repo),
+    db: ScheduleDBSession = Depends(get_db),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
 
     # Check for duplicate ID within workspace
-    existing = await block_repo.get_by_id(req.id, workspace_id)
+    existing = await db.block_repo.get_by_id(req.id, workspace_id)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ScheduleBlock with this ID already exists")
 
@@ -76,7 +76,7 @@ async def create_schedule_block(
         updated_at=now,
         created_by=auth_user.payload.sub,
     )
-    created = await block_repo.create(block)
+    created = await db.block_repo.create(block)
     return ScheduleBlockResponse(
         id=created.id,
         workspace_id=created.workspace_id,
@@ -100,7 +100,7 @@ async def update_schedule_block(
     req: UpdateScheduleBlockRequest,
     auth_user: AuthenticatedUser = Depends(get_current_user),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
-    block_repo: ScheduleBlockRepository = Depends(get_block_repo),
+    db: ScheduleDBSession = Depends(get_db),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
 
@@ -118,7 +118,7 @@ async def update_schedule_block(
     }
 
     try:
-        updated = await block_repo.update(block_id, workspace_id, **update_data)
+        updated = await db.block_repo.update(block_id, workspace_id, **update_data)
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ScheduleBlock not found")
 
@@ -144,10 +144,10 @@ async def delete_schedule_block(
     block_id: str,
     auth_user: AuthenticatedUser = Depends(get_current_user),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
-    block_repo: ScheduleBlockRepository = Depends(get_block_repo),
+    db: ScheduleDBSession = Depends(get_db),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
     try:
-        await block_repo.delete(block_id, workspace_id)
+        await db.block_repo.delete(block_id, workspace_id)
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ScheduleBlock not found")

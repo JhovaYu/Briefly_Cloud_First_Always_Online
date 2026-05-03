@@ -18,3 +18,9 @@ class Settings(BaseSettings):
 
     # Workspace service (for remote authorization)
     WORKSPACE_SERVICE_URL: str = "http://workspace-service:8001"
+
+    # Persistence store type: "inmemory" | "postgres"
+    SCHEDULE_STORE_TYPE: str = "inmemory"
+    # Only required when SCHEDULE_STORE_TYPE=postgres
+    # Format: postgresql+asyncpg://user:password@host:port/dbname
+    SCHEDULE_DATABASE_URL: str | None = None
