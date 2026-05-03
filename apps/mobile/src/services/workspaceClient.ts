@@ -115,7 +115,30 @@ export function createWorkspaceClient(getAccessToken: () => string | null) {
 
             const created = await this.createWorkspace('Personal Workspace');
             _activeWorkspaceId = created.id;
-            return _activeWorkspaceId;
+            return created.id;
+        },
+
+        async getSharedText(workspaceId: string): Promise<{ content: string } | null> {
+            try {
+                return await request<{ content: string }>(
+                    'GET',
+                    `/workspaces/${workspaceId}/shared-text`,
+                    getAccessToken,
+                );
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg.includes('404')) return null;
+                throw err;
+            }
+        },
+
+        async updateSharedText(workspaceId: string, content: string): Promise<void> {
+            await request<void>(
+                'PUT',
+                `/workspaces/${workspaceId}/shared-text`,
+                getAccessToken,
+                { content },
+            );
         },
     };
 }

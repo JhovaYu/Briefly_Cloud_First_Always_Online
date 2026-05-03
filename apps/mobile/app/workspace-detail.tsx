@@ -158,6 +158,14 @@ export default function WorkspaceDetailScreen() {
                     >
                         <Text style={styles.scheduleButtonText}>Ver horarios</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.sharedTextButton}
+                        onPress={() => router.push(`/workspace-shared-text?id=${encodeURIComponent(workspace.id)}`)}
+                    >
+                        <Text style={styles.sharedTextButtonLabel}>Texto Compartido</Text>
+                        <Text style={styles.sharedTextButtonSub}>Lee y edita texto simple compartido con escritorio.</Text>
+                    </TouchableOpacity>
                 </ScrollView>
             ) : null}
         </View>
@@ -243,4 +251,15 @@ const styles = StyleSheet.create({
         borderColor: '#333',
     },
     scheduleButtonText: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16 },
+    sharedTextButton: {
+        backgroundColor: '#1a1a1a',
+        borderRadius: 10,
+        padding: 18,
+        alignItems: 'flex-start',
+        borderWidth: 1,
+        borderColor: '#252525',
+        marginTop: 4,
+    },
+    sharedTextButtonLabel: { color: '#aeb4ff', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
+    sharedTextButtonSub: { color: '#555', fontSize: 13 },
 });
