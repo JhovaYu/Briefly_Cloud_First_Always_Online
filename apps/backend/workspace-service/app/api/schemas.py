@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -47,3 +47,15 @@ class PermissionsResponse(BaseModel):
 class MeResponse(BaseModel):
     user_id: str
     email: str | None = None
+
+
+class SharedTextResponse(BaseModel):
+    workspace_id: str
+    content: str
+    updated_by: str | None = None
+    updated_at: str
+    version: int
+
+
+class UpdateSharedTextRequest(BaseModel):
+    content: str = Field(..., max_length=50000)

@@ -15,3 +15,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
     SUPABASE_AUTH_STRATEGY: str = "jwks"
     SUPABASE_JWKS_URL: str = "https://gcbwysprkqsfakaqsara.supabase.co/auth/v1/.well-known/jwks.json"
+
+    # PostgreSQL persistence
+    WORKSPACE_STORE_TYPE: str = "in_memory"
+    WORKSPACE_DATABASE_URL: str = ""

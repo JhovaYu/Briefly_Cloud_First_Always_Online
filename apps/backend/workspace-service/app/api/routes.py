@@ -9,18 +9,23 @@ from app.api.schemas import (
     DocumentListResponse,
     PermissionsResponse,
     MeResponse,
+    SharedTextResponse,
+    UpdateSharedTextRequest,
 )
 from app.api.dependencies import (
     get_current_user,
     get_workspace_repo,
     get_membership_repo,
     get_document_repo,
+    get_shared_text_repo,
 )
 from app.domain.errors import WorkspaceNotFound
+from app.domain.workspace_shared_text import WorkspaceSharedText
 from app.ports.token_verifier import TokenPayload
 from app.ports.workspace_repository import WorkspaceRepository
 from app.ports.membership_repository import MembershipRepository
 from app.ports.document_repository import DocumentRepository
+from app.ports.workspace_shared_text_repository import WorkspaceSharedTextRepository
 from app.use_cases import (
     create_workspace,
     list_workspaces,
@@ -198,3 +203,68 @@ async def get_permissions_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Access denied")
 
     return PermissionsResponse(**perms)
+
+
+@router.get("/workspaces/{workspace_id}/shared-text", response_model=SharedTextResponse)
+async def get_shared_text_endpoint(
+    workspace_id: str,
+    current_user: TokenPayload = Depends(get_current_user),
+    membership_repo: MembershipRepository = Depends(get_membership_repo),
+    shared_text_repo: WorkspaceSharedTextRepository = Depends(get_shared_text_repo),
+):
+    # Verify membership (workspace exists + user has access)
+    membership = await membership_repo.get_by_workspace_and_user(workspace_id, current_user.sub)
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found or access denied")
+
+    shared_text = await shared_text_repo.get(workspace_id)
+    if shared_text is None:
+        # Return empty content if not yet created
+        return SharedTextResponse(
+            workspace_id=workspace_id,
+            content="",
+            updated_by=None,
+            updated_at="",
+            version=0,
+        )
+
+    return SharedTextResponse(
+        workspace_id=shared_text.workspace_id,
+        content=shared_text.content,
+        updated_by=shared_text.updated_by,
+        updated_at=shared_text.updated_at.isoformat() if shared_text.updated_at else "",
+        version=shared_text.version,
+    )
+
+
+@router.put("/workspaces/{workspace_id}/shared-text", response_model=SharedTextResponse)
+async def update_shared_text_endpoint(
+    workspace_id: str,
+    req: UpdateSharedTextRequest,
+    current_user: TokenPayload = Depends(get_current_user),
+    membership_repo: MembershipRepository = Depends(get_membership_repo),
+    shared_text_repo: WorkspaceSharedTextRepository = Depends(get_shared_text_repo),
+):
+    # Verify membership (workspace exists + user has access)
+    membership = await membership_repo.get_by_workspace_and_user(workspace_id, current_user.sub)
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found or access denied")
+
+    from datetime import datetime, timezone
+    shared_text = await shared_text_repo.upsert(
+        WorkspaceSharedText(
+            workspace_id=workspace_id,
+            content=req.content,
+            updated_by=current_user.sub,
+            updated_at=datetime.now(timezone.utc),
+            version=1,
+        )
+    )
+
+    return SharedTextResponse(
+        workspace_id=shared_text.workspace_id,
+        content=shared_text.content,
+        updated_by=shared_text.updated_by,
+        updated_at=shared_text.updated_at.isoformat() if shared_text.updated_at else "",
+        version=shared_text.version,
+    )

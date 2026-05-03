@@ -27,6 +27,8 @@ services:
       - SUPABASE_JWT_AUDIENCE=authenticated
       - SUPABASE_AUTH_STRATEGY=jwks
       - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL:-https://gcbwysprkqsfakaqsara.supabase.co/auth/v1/.well-known/jwks.json}
+      - WORKSPACE_STORE_TYPE=postgres
+      - WORKSPACE_DATABASE_URL=postgresql+asyncpg://briefly:${PLANNING_DB_PASSWORD:-briefly_dev_password}@planning-postgres:5432/briefly_workspace
     mem_limit: 128m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
@@ -191,6 +193,7 @@ services:
     volumes:
       - pg-planning-data:/var/lib/postgresql/data
       - ./apps/backend/planning-service/init-schedule-db.sh:/docker-entrypoint-initdb.d/init-schedule-db.sh:ro
+      - ./apps/backend/planning-service/init-workspace-db.sh:/docker-entrypoint-initdb.d/init-workspace-db.sh:ro
     mem_limit: 256m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U briefly -d briefly_planning"]

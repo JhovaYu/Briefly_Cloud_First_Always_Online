@@ -5,12 +5,16 @@ from app.domain.errors import Unauthorized, AuthServiceUnavailable
 from app.ports.token_verifier import TokenVerifier, TokenPayload
 from app.ports.workspace_repository import WorkspaceRepository
 from app.ports.membership_repository import MembershipRepository
-from app.ports.document_repository import DocumentRepository
+from app.ports.workspace_shared_text_repository import WorkspaceSharedTextRepository
 from app.adapters.auth.supabase_jwks_token_verifier import SupabaseJWKSVerifier
 from app.adapters.persistence.in_memory_repositories import (
     InMemoryWorkspaceRepository,
     InMemoryMembershipRepository,
     InMemoryDocumentRepository,
+)
+from app.adapters.persistence.workspace_shared_text_persistence import (
+    SQLAlchemyWorkspaceSharedTextRepository,
+    InMemoryWorkspaceSharedTextRepository,
 )
 from app.config.settings import Settings
 
@@ -22,6 +26,7 @@ _membership_repo: MembershipRepository | None = None
 _document_repo: DocumentRepository | None = None
 _settings: Settings | None = None
 _token_verifier: TokenVerifier | None = None
+_shared_text_repo: WorkspaceSharedTextRepository | None = None
 
 
 def get_settings() -> Settings:
@@ -50,6 +55,17 @@ def get_document_repo() -> DocumentRepository:
     if _document_repo is None:
         _document_repo = InMemoryDocumentRepository()
     return _document_repo
+
+
+def get_shared_text_repo() -> WorkspaceSharedTextRepository:
+    global _shared_text_repo
+    if _shared_text_repo is None:
+        settings = get_settings()
+        if settings.WORKSPACE_STORE_TYPE == "postgres":
+            _shared_text_repo = SQLAlchemyWorkspaceSharedTextRepository()
+        else:
+            _shared_text_repo = InMemoryWorkspaceSharedTextRepository()
+    return _shared_text_repo
 
 
 def get_token_verifier() -> TokenVerifier:
