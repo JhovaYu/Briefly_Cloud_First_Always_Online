@@ -4,7 +4,7 @@ import type * as Y from 'yjs';
 
 interface SharedTextPanelProps {
   workspaceService: WorkspaceService;
-  workspaceId: string;
+  workspaceId: string | null;  // cloud workspace UUID, null when not bootstrapped
   activeNoteId: string | null;
   doc: Y.Doc;
 }
@@ -57,6 +57,7 @@ export const SharedTextPanel: React.FC<SharedTextPanelProps> = ({
   };
 
   const handleRefresh = async () => {
+    if (!workspaceId) return;
     setStatus('fetching');
 
     try {
@@ -93,7 +94,9 @@ export const SharedTextPanel: React.FC<SharedTextPanelProps> = ({
           if (e.key === 'Enter' || e.key === ' ') setIsExpanded(!isExpanded);
         }}
       >
-        <span className="shared-text-panel-title">Texto compartido</span>
+        <span className="shared-text-panel-title">
+        {workspaceId ? 'Texto compartido' : 'Texto compartido (cloud)'}
+      </span>
         {status !== 'idle' && (
           <span className="shared-text-panel-badge">{statusLabel[status]}</span>
         )}

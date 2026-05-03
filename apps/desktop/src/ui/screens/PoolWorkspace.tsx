@@ -19,8 +19,8 @@ import type { WorkspaceService } from '@tuxnotas/shared';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { exportNoteAs, exportAllPoolAsZip, exportNoteToService } from '../utils/exportHelpers';
 
-export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService }: {
-  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string; workspaceService?: WorkspaceService;
+export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService, cloudWorkspaceId }: {
+  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string; workspaceService?: WorkspaceService; cloudWorkspaceId?: string | null;
 }) {
   const [services, setServices] = useState<AppServices | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -615,11 +615,11 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
       </div>
 
       {/* SHARED TEXT PANEL */}
-      {services && activeNoteId && workspaceSvc && (
+      {services && workspaceSvc && (
         <div className="shared-text-panel-wrapper">
           <SharedTextPanel
             workspaceService={workspaceSvc}
-            workspaceId={poolId}
+            workspaceId={cloudWorkspaceId ?? null}
             activeNoteId={activeNoteId}
             doc={services.doc}
           />
