@@ -18,7 +18,7 @@
 | HTTPS /health | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/health` | 200 | ✅ PASS |
 | HTTPS workspace | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/workspace/health` | 200 | ✅ PASS |
 | HTTPS planning | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/planning/health` | 200 | ✅ PASS |
-| HTTPS schedule | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/schedule/health` | 200 (post-deploy) | ⏳ PENDING |
+| HTTPS schedule | `curl -s -o /dev/null -w "%{http_code}" https://briefly.ddns.net/api/schedule/health` | 200 | ✅ PASS |
 | HTTP redirect | `curl -s -o /dev/null -w "%{http_code}" http://briefly.ddns.net/` | 301 | ✅ PASS |
 | Nginx healthcheck | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/nginx-health` | 200 | ✅ PASS |
 | Mobile HTTPS login | APK con `EXPO_PUBLIC_API_BASE_URL=https://briefly.ddns.net` | PASS | ✅ PASS |
@@ -432,3 +432,73 @@ Después de deployar con postgres:
 - In-memory sigue disponible con `SCHEDULE_STORE_TYPE=inmemory` (default para dev local)
 - Nginx route `/api/schedule/` no cambia
 - Auth JWT no cambia
+
+---
+
+## PM-06F.DB — Validación real en EC2 (2026-05-02)
+
+### Secuencia de deploy validada
+
+1. **Verificar que la database `briefly_schedule` no existe** (primer paso antes de crear):
+   ```sql
+   -- Dentro del contenedor postgres
+   psql -U briefly -d briefly_planning -c "SELECT datname FROM pg_database WHERE datname = 'briefly_schedule'"
+   ```
+
+2. **Crear la database** (solo si no existe):
+   ```sql
+   CREATE DATABASE briefly_schedule;
+   ```
+
+3. **Habilitar pgcrypto** (necesario para `gen_random_uuid()` en la migration):
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pgcrypto;
+   ```
+
+4. **Rebuild de schedule-service**:
+   ```bash
+   docker compose -f docker-compose.ec2.yml build schedule-service
+   ```
+
+5. **Levantar schedule-service**:
+   ```bash
+   docker compose -f docker-compose.ec2.yml up -d schedule-service
+   ```
+   - El entrypoint detecta `SCHEDULE_STORE_TYPE=postgres` y ejecuta `alembic upgrade head`
+   - Si la tabla no existe, Alembic la crea
+
+6. **Si downstream da 502 — resolver upstream stale en Nginx**:
+   > Cuando schedule-service se reconstruye, Docker asigna una nueva IP interna al contenedor. Nginx hace cache del upstream IP por la vida del contenedor. Un recreate de schedule-service puede dejar a Nginx apuntando a una IP vieja.
+
+   **Fix:**
+   ```bash
+   docker compose -f docker-compose.ec2.yml restart nginx
+   ```
+
+   **Síntoma:** `wget` interno desde nginx a `http://schedule-service:8006/health` responde OK, pero el proxy externo devuelve 502. Esto confirma que el problema es el mapeo de IP en nginx, no el backend.
+
+### Resultado: PM-06F.DB PASS
+
+| Verificación | Resultado |
+|---|---|
+| `briefly_schedule` database creada | ✅ |
+| `pgcrypto` extension habilitada | ✅ |
+| schedule-service healthy post-rebuild | ✅ |
+| Alembic corre desde entrypoint | ✅ |
+| `/api/schedule/health` → 200 | ✅ |
+| CRUD desde desktop PASS | ✅ |
+| CRUD desde mobile PASS | ✅ |
+| Cambios sincronizan entre clientes | ✅ |
+| **Persistência tras restart de schedule-service** | ✅ |
+| **Persistência tras restart de nginx** | ✅ |
+
+Los horarios sobreviven:
+- `docker restart schedule-service`
+- `docker restart nginx`
+- Recreate completo de schedule-service con rebuild
+
+### Nota sobre el 502 post-recreate
+
+El 502 que ocurrió entre el rebuild y el restart de nginx **no fue un fallo del código de schedule-service ni de la migración**. Fue un síntoma de Docker networking: cuando el contenedor de schedule-service se recrea, obtiene una nueva IP interna en la red `briefly-internal`. Nginx había cacheado la IP vieja como upstream. El fix fue reiniciar el contenedor de nginx para que recalculara la resolución DNS de `schedule-service`.
+
+Esto es un patrón conocido en Docker con/nginx y no indica un bug en la implementación.
