@@ -25,7 +25,10 @@
 | **PM-06D** | Tasks cloud CRUD | ✅ PM-06D DONE — PlanningApiClient + tasks screen completo + workspaceClient.ts + home.tsx botón Tareas |
 | **PM-06E** | Pools/Workspaces read | ✅ PM-06E DONE — workspaces.tsx list, workspace-detail.tsx with tasks button, home.tsx "Espacios cloud" button, workspaceId param in tasks.tsx. Pool (P2P/Yjs) != Workspace (cloud REST) — `[poolId].tsx` remains P2P, not cloud. No update/delete workspace endpoints in backend.
 | **PM-06F** | Schedule/Calendar UI | ✅ PM-06F.DB PASS — Desktop/Mobile Schedule cloud parity + PostgreSQL persistence en EC2. Schedule sobrevive reinicio de contenedor. |
-| **PM-06G** | Android widgets prototype | TaskWidget + ScheduleWidget en kotlin nativo |
+| **PM-06G** | Android Quick Actions + Today Dashboard | ✅ PM-06G.1 PASS (Today Dashboard), PM-06G.2 PASS (Quick Actions), PM-06G.3 pendiente |
+| **PM-06G.1** | Today Dashboard — screen con summary diario | ✅ PASS — `app/today.tsx` + `hooks/useTodaySummary.ts`, muestra próximo schedule block + tareas pendientes + quick actions |
+| **PM-06G.2** | Android Quick Actions (App Shortcuts) | ✅ PASS — expo-quick-actions@6.0.1, 3 acciones: Hoy→/today, Tareas→/tasks, Horario→/schedule. Sin android/ manual. |
+| **PM-06G.3** | Android Widget real | �.Future — Requiere react-native-android-widget o config plugin, riesgo alto con Expo prebuild, postergado |
 
 ---
 
@@ -64,16 +67,29 @@ apps/mobile/android/app/src/main/res/xml/network_security_config.xml
 
 **Recomendación:** PM-06C con email/password; Google OAuth como PM-06C2 post-HTTPS.
 
-### Widgets Android Nativos
+### PM-06G — Android Quick Actions + Widget Prototype
 
-**Problema:** Widgets Android requieren archivos Java/Kotlin nativos y no son compatibles con Expo managed workflow.
+**Decisión arquitectónica (2026-05-03):** Se prioriza Quick Actions + Today Dashboard sobre widget Android real.
 
-**Mitigación:** Usar Expo prebuild para acceder a `android/` nativo. PM-06G como fase separada con archivos kotlin/java.
+**Razones:**
+1. Widget Android real requiere config plugin o modificaciones manuales a `android/` — riesgo alto de romper Expo prebuild.
+2. Quick Actions dan acceso directo a pantallas existentes sin cambios nativos.
+3. Today Dashboard ofrece la misma utilidad de "resumen diario" sin complejidad de widget.
+4. Widget real queda documentado como PM-06G.3 para futuro.
 
-**Arquitectura para widgets:**
-1. RN app escribe JSON de tasks a `SharedPreferences` o archivo en `filesDir`
-2. Widget Android (kotlin) lee archivo + `AppWidgetProvider`
-3. RemoteViews renderiza interfaz simple
+**PM-06G.1 — Today Dashboard:** `app/today.tsx` + `hooks/useTodaySummary.ts`. Muestra próximo schedule block del día, contador de tareas pendientes, top 3 tareas, botones de navegación rápida.
+
+**PM-06G.2 — Android Quick Actions:** expo-quick-actions@6.0.1. Tres acciones registradas en `_layout.tsx`:
+- "Hoy" → `/today` (Today Dashboard)
+- "Tareas" → `/tasks`
+- "Horario" → `/schedule`
+
+Cold start: quick action guardada en `QuickActions.initial`, navegación diferida 500ms para esperar restauración de sesión AuthContext. Warm start: listener `QuickActions.addListener` navega en cada invocación.
+
+**PM-06G.3 — Widget real:** Postergado. Opciones técnicas identificadas:
+- `react-native-android-widget` + expo-config-plugin
+- Modificaciones manuales a `android/` (expuesto a sobreescritura por expo prebuild)
+- Requiere investigación de compatibilidad con Expo 54 + RN 0.81.
 
 ---
 

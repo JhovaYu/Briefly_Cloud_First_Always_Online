@@ -1,8 +1,8 @@
 # DEMO-FINAL-01: Cloud-First Release Smoke Matrix
 
-**Fecha:** 2026-05-02
+**Fecha:** 2026-05-03
 **Branch:** `pm-06-mobile-rn`
-**HEAD:** `23fb770 docs: record schedule PostgreSQL persistence smoke`
+**HEAD:** `e1ab3ec PM-06G.2 add Android Quick Actions for Today, Tasks, Schedule`
 **Producción:** https://briefly.ddns.net
 
 ---
@@ -66,6 +66,12 @@ Los horarios de Schedule ahora persisten en PostgreSQL real (`briefly_schedule` 
 |---|---|---|---|
 | Login Supabase | Mobile + email/password | Session JWT válida | ✅ PASS |
 | Login Supabase | Desktop | Session JWT válida | ✅ PASS |
+| **Today Dashboard** | Mobile → `/today` | Screen carga con workspace y summary | ✅ PASS |
+| **Schedule block next** | Today Dashboard muestra bloque del día | Bloque visible o empty state amable | ✅ PASS |
+| **Tasks pending count** | Today Dashboard contador badge | Contador correcto | ✅ PASS |
+| **Quick Action: Hoy** | Long-press icon → "Hoy" | Abre `/today` | ✅ PASS |
+| **Quick Action: Tareas** | Long-press icon → "Tareas" | Abre `/tasks` | ✅ PASS |
+| **Quick Action: Horario** | Long-press icon → "Horario" | Abre `/schedule` | ✅ PASS |
 | Workspaces list | GET `/api/workspace/workspaces` | Lista de workspaces del usuario | ✅ PASS |
 | Tasks create | POST `/api/planning/tasks` | 201 + task returned | ✅ PASS |
 | Tasks toggle | PATCH `/api/planning/tasks/{id}` | 200 + updated | ✅ PASS |
@@ -119,6 +125,8 @@ docker compose -f docker-compose.ec2.yml ps
 - [ ] APK configurado con `EXPO_PUBLIC_API_BASE_URL=https://briefly.ddns.net`
 - [ ] Login functional (email/password Supabase)
 - [ ] Workspaces list muestra los espacios del usuario
+- [ ] **Today Dashboard** (`/today`) carga y muestra summary del workspace
+- [ ] **Quick Actions** (long-press app icon): Hoy→/today, Tareas→/tasks, Horario→/schedule
 - [ ] Tareas CRUD funciona
 - [ ] Schedule CRUD funciona y sincroniza con desktop
 
@@ -142,6 +150,7 @@ docker compose -f docker-compose.ec2.yml ps
 | Init script de `briefly_schedule` no corre si volumen existe | **Baja** | schedule-service no puede conectar a DB | Crear DB manualmente con comando seguro documentado en DEPLOY-02 |
 | planning-postgres se queda sin memoria con 2 databases | **Baja** | servicios no responden | 256m mem_limit compartido; funciona en Learner Lab; no exceder carga |
 | Servicios (workspace, collab, utility, intelligence) son MVP in-memory | **N/A** | Datos no persisten al restart | Solo `planning-service` y `schedule-service` tienen persistencia real; los demás son MVP/placeholder |
+| PM-06G.3 Android widget real | **Alta** | Config plugin o android/ manual con Expo prebuild | Postergado; Quick Actions + Today Dashboard dan funcionalidad similar con riesgo bajo |
 
 ---
 
