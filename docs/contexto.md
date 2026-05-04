@@ -252,6 +252,43 @@ SYNC PASS
 
 **Resultado final:** PASS — El hotfix de `d193d0a` resuelve el crash del backend ante tickets inválidos/expirados. El happy path CRDT sync cloud funciona bidireccionalmente.
 
+### PM-10A.1 — Workspace-Service Postgres Persistence (PASS)
+**Alcance:** workspace-service — persistir workspaces y memberships en Postgres
+**Commit:** `485f731` feat(workspace-service): persist workspaces and memberships in Postgres
+**Resultado:** PASS
+
+**Implementación:**
+- `SQLAlchemyWorkspaceRepository` + `SQLAlchemyMembershipRepository` en `app/adapters/persistence/sqlalchemy_repo_impl.py`
+- `WorkspaceModel` + `MembershipModel` en `app/adapters/persistence/sqlalchemy_repositories.py`
+- Tablas `workspaces` y `workspace_memberships` creadas idempotente via `Base.metadata.create_all` en lifespan startup
+- Wiring condicional en `app/api/dependencies.py`: si `WORKSPACE_STORE_TYPE=postgres` y `WORKSPACE_DATABASE_URL` configurado → SQLAlchemy repos; si no → fallback in-memory
+- Fail-fast: `RuntimeError` si `WORKSPACE_STORE_TYPE=postgres` pero falta `WORKSPACE_DATABASE_URL`
+- Deuda transaccional documentada en `create_workspace.py`: workspace + membership en operaciones separadas
+
+**Validación Playwright EC2:**
+- Workspace creado: `c0515994-a7d9-476d-b781-0339f934ca8a` ("PM10A Persistence QA")
+- `POST /collab/{uuid}/{uuid}/ticket` → 200 antes y después del restart
+- WS connected antes y después del restart
+- `docker compose -f docker-compose.ec2.yml restart workspace-service` → workspace sigue visible en dashboard
+- CloudYjsProvider reconecta correctamente post-restart
+
+**Criterios cumplidos:**
+- Workspaces sobreviven restart de workspace-service
+- Memberships sobreviven restart de workspace-service
+- Fallback in-memory funciona si Postgres no está disponible
+- Fail-fast en producción si configured incorrectly
+
+**Deuda PM-10A.1 / restante:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | Workspace + membership en operaciones separadas — si membership creation falla post workspace creation, queda orphan workspace. PM-10A.2: Unit of Work / rollback cleanup. |
+| 🟡 MEDIO | Alembic migration no existe para `workspaces`/`workspace_memberships` — `create_all` usado al startup. Aceptable para MVP académico; Alembic migration recomendada antes de producción. |
+| 🔵 BAJO | Transient WebSocket warning ("WebSocket closed before connection established") en primera conexión — retry succeede, no bloquea. |
+| 🔵 BAJO | TipTap: `@tiptap/extension-collaboration` incompatible con `@tiptap/extension-undo-redo`. No bloquea sync. |
+
+**Próximo paso:** PM-10B — Mobile Today Dashboard REST discovery / Mobile Cloud Sync + Widgets.
+
 ### PM-08B Deuda y caveats
 
 ALTO:
