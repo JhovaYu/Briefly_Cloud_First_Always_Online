@@ -25,8 +25,9 @@ from app.use_cases.validate_collaboration_ticket import (
 # Global room manager instance (singleton per service)
 _room_manager = None
 
-# Diagnostic logger — logs path patterns and auth results, never tickets or tokens
-_logger = logging.getLogger("collab")
+# Diagnostic logger — writes to stdout so it appears in `docker compose logs`
+# Use a name under uvicorn so it is captured by the Docker log driver
+_logger = logging.getLogger("uvicorn.error")
 
 
 def _mask_ticket(ticket_id: str) -> str:
@@ -38,11 +39,17 @@ def _mask_ticket(ticket_id: str) -> str:
     return ticket_id[:4] + "..."
 
 
+def _log(prefix: str, msg: str) -> None:
+    """Print a log line to stdout/stderr for Docker capture. No secrets."""
+    line = f"[collab] {prefix} {msg}"
+    print(line, flush=True)
+
+
 def extract_workspace_document_from_ws_path(path: str) -> tuple[str, str] | None:
     """Extract (workspace_id, document_id) from a WebSocket path robustly.
 
-    Supports three path formats that pycrdt-websocket / uvicorn may produce
-    depending on how the ASGI app is mounted:
+    Supports two path formats depending on how pycrdt-websocket / uvicorn
+    constructs the ASGI scope:
 
     Format A (mount-relative, 2 segments):
         /{workspace_id}/{document_id}
@@ -52,17 +59,11 @@ def extract_workspace_document_from_ws_path(path: str) -> tuple[str, str] | None
         /collab/crdt/{workspace_id}/{document_id}
         e.g. /collab/crdt/ws-123/doc-456  → ("ws-123", "doc-456")
 
-    Format C (full path with /collab/crdt prefix, 5+ segments due to
-        double-normalization or unusual proxies):
-        /collab/crdt/{workspace_id}/{document_id}/<extra>
-        e.g. /collab/crdt/ws-123/doc-456/xyz  → ("ws-123", "doc-456")
-
     Returns None if the path does not match any expected format.
     """
     if not path:
         return None
 
-    # Strip leading slash and split
     segments = path.strip("/").split("/")
     n = len(segments)
 
@@ -70,7 +71,7 @@ def extract_workspace_document_from_ws_path(path: str) -> tuple[str, str] | None
         # Format A: /{workspace_id}/{document_id}
         return segments[0], segments[1]
     elif n >= 4 and segments[0] == "collab" and segments[1] == "crdt":
-        # Format B or C: /collab/crdt/{workspace_id}/{document_id}
+        # Format B: /collab/crdt/{workspace_id}/{document_id}
         return segments[2], segments[3]
     else:
         return None
@@ -101,7 +102,9 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
         Ticket must be present as ?ticket=<opaque_id>
         and must match the workspace_id/document_id from the path.
 
-        Returns True to reject connection, False to accept.
+        pycrdt-websocket on_connect boolean semantics:
+            return True  => reject / close the WebSocket connection
+            return False => accept / allow the WebSocket connection
         """
         # ── Extract ticket from query string ──────────────────────────────────
         query_string = scope.get("query_string", b"").decode()
@@ -119,32 +122,19 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
         ws_pair = extract_workspace_document_from_ws_path(raw_path)
 
         if ws_pair is None:
-            _logger.warning(
-                "[DENIED] invalid_ws_path path=%r has_ticket=%s",
-                raw_path,
-                str(bool(ticket_id)),
-            )
+            _log("WARNING", f"[DENIED] invalid_ws_path path={raw_path!r} has_ticket={str(bool(ticket_id))}")
             return True  # reject: malformed path
 
         workspace_id, document_id = ws_pair
 
-        _logger.info(
-            "[ATTEMPT] ws_connect path_type=%s ws_id=%r doc_id=%r has_ticket=%s",
-            "full" if raw_path.startswith("/collab/crdt") else "relative",
-            workspace_id,
-            document_id,
-            str(bool(ticket_id)),
-        )
+        path_type = "full" if raw_path.startswith("/collab/crdt") else "relative"
+        _log("INFO", f"[ATTEMPT] ws_connect path_type={path_type} ws_id={workspace_id!r} doc_id={document_id!r} has_ticket={str(bool(ticket_id))}")
 
         # ── Validate ticket ──────────────────────────────────────────────────
         ticket_store = get_ticket_store()
         try:
             if not ticket_id:
-                _logger.warning(
-                    "[DENIED] missing_ticket ws_id=%r doc_id=%r",
-                    workspace_id,
-                    document_id,
-                )
+                _log("WARNING", f"[DENIED] missing_ticket ws_id={workspace_id!r} doc_id={document_id!r}")
                 return True  # reject: no ticket
 
             await validate_collaboration_ticket(
@@ -153,42 +143,29 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
                 document_id=document_id,
                 ticket_store=ticket_store,
             )
-            # Pre-create room using the room key from the path (not the scope path,
-            # which may include the mount prefix). Use the clean room key format.
+            # Pre-create room using the clean room key format
             room_key = f"{workspace_id}/{document_id}"
             channel_id = id(msg)
             manager.track_channel(channel_id, room_key)
             await manager._ensure_room_for_path(room_key, workspace_id, document_id)
 
-            _logger.info(
-                "[ALLOWED] ws_connected ws_id=%r doc_id=%r",
-                workspace_id,
-                document_id,
-            )
+            _log("INFO", f"[ALLOWED] ws_connected ws_id={workspace_id!r} doc_id={document_id!r}")
             return False  # accept
 
         except TicketInvalid as e:
-            # Map to safe denial reason for diagnostics
             reason = getattr(e, "args", ["unknown"])[0] if e.args else "unknown"
-            # Classify denial reason without printing ticket value
             if "required" in reason or "missing" in reason:
                 denial_type = "missing_ticket"
             elif "expired" in reason:
                 denial_type = "ticket_expired"
             elif "does not match" in reason or "mismatch" in reason:
                 denial_type = "ticket_mismatch"
-            elif "invalid" in reason or "expired" in reason:
+            elif "invalid" in reason:
                 denial_type = "ticket_invalid"
             else:
                 denial_type = "ticket_rejected"
 
-            _logger.warning(
-                "[DENIED] %s ws_id=%r doc_id=%r ticket=%s",
-                denial_type,
-                workspace_id,
-                document_id,
-                _mask_ticket(ticket_id),
-            )
+            _log("WARNING", f"[DENIED] {denial_type} ws_id={workspace_id!r} doc_id={document_id!r} ticket={_mask_ticket(ticket_id)}")
             return True  # reject
 
     async def on_disconnect(msg: dict) -> None:
