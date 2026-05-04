@@ -96,7 +96,7 @@ export default function WorkspacesScreen() {
         setActionError(null);
         try {
             const result = await joinWorkspaceWithAuth(code);
-            await setActiveWorkspace(result.id);
+            await setActiveWorkspace(result.workspace.id);
             await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
             setJoinCode('');
             await loadWorkspaces();

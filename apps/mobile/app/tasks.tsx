@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
+import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
+import { getLocalDateString } from '../src/utils/dateUtils';
 import { createPlanningClient } from '../src/services/planningClient';
-import { createWorkspaceClient } from '../src/services/workspaceClient';
 import { queryClient } from '../src/lib/queryClient';
 import { createUuid } from '@tuxnotas/shared/src/logic/uuid';
 import type { PlanningTask, PlanningTaskState } from '@tuxnotas/shared/src/domain/Entities';
@@ -50,6 +51,7 @@ export default function TasksScreen() {
     const router = useRouter();
     const { workspaceId: workspaceIdParam } = useLocalSearchParams<{ workspaceId?: string }>();
     const { loading: authLoading, getAccessToken } = useAuth();
+    const { activeWorkspaceId } = useActiveWorkspace();
     const [tasks, setTasks] = useState<PlanningTask[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -68,9 +70,10 @@ export default function TasksScreen() {
 
             if (workspaceIdParam) {
                 workspaceId = workspaceIdParam;
+            } else if (activeWorkspaceId) {
+                workspaceId = activeWorkspaceId;
             } else {
-                const workspaceClient = createWorkspaceClient(getAccessToken);
-                workspaceId = await workspaceClient.ensureActiveWorkspace();
+                throw new Error('No active workspace');
             }
 
             const fetched = await planningClient.listTasks(workspaceId);
@@ -122,16 +125,18 @@ export default function TasksScreen() {
 
             if (workspaceIdParam) {
                 workspaceId = workspaceIdParam;
+            } else if (activeWorkspaceId) {
+                workspaceId = activeWorkspaceId;
             } else {
-                const workspaceClient = createWorkspaceClient(getAccessToken);
-                workspaceId = await workspaceClient.ensureActiveWorkspace();
+                throw new Error('No active workspace');
             }
-
+            const todayDate = getLocalDateString();
             const created = await planningClient.createTask(workspaceId, {
                 id: tempId,
                 text,
                 state: 'pending',
                 priority: 'medium',
+                due_date: `${todayDate}T12:00:00`,
             });
             setTasks(prev =>
                 prev.map(t => (t.id === tempId ? { ...created, list_id: created.list_id ?? undefined } : t))
@@ -158,9 +163,10 @@ export default function TasksScreen() {
 
             if (workspaceIdParam) {
                 workspaceId = workspaceIdParam;
+            } else if (activeWorkspaceId) {
+                workspaceId = activeWorkspaceId;
             } else {
-                const workspaceClient = createWorkspaceClient(getAccessToken);
-                workspaceId = await workspaceClient.ensureActiveWorkspace();
+                throw new Error('No active workspace');
             }
 
             await planningClient.updateTask(workspaceId, taskId, { state: newState });
@@ -183,9 +189,10 @@ export default function TasksScreen() {
 
             if (workspaceIdParam) {
                 workspaceId = workspaceIdParam;
+            } else if (activeWorkspaceId) {
+                workspaceId = activeWorkspaceId;
             } else {
-                const workspaceClient = createWorkspaceClient(getAccessToken);
-                workspaceId = await workspaceClient.ensureActiveWorkspace();
+                throw new Error('No active workspace');
             }
 
             await planningClient.deleteTask(workspaceId, taskId);

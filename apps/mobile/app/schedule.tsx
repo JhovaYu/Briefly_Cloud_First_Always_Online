@@ -14,8 +14,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
+import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
 import { createScheduleClient } from '../src/services/scheduleClient';
-import { createWorkspaceClient } from '../src/services/workspaceClient';
 import { queryClient } from '../src/lib/queryClient';
 import { createUuid } from '@tuxnotas/shared/src/logic/uuid';
 import type { ScheduleBlock } from '../src/services/scheduleClient';
@@ -113,6 +113,7 @@ export default function ScheduleScreen() {
     const router = useRouter();
     const { workspaceId: workspaceIdParam } = useLocalSearchParams<{ workspaceId?: string }>();
     const { loading: authLoading, getAccessToken } = useAuth();
+    const { activeWorkspaceId } = useActiveWorkspace();
 
     const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
     const [sections, setSections] = useState<Section[]>([]);
@@ -150,9 +151,10 @@ export default function ScheduleScreen() {
 
             if (workspaceIdParam) {
                 workspaceId = workspaceIdParam;
+            } else if (activeWorkspaceId) {
+                workspaceId = activeWorkspaceId;
             } else {
-                const workspaceClient = createWorkspaceClient(getAccessToken);
-                workspaceId = await workspaceClient.ensureActiveWorkspace();
+                throw new Error('No active workspace');
             }
 
             const fetched = await scheduleClient.listScheduleBlocks(workspaceId);
@@ -215,9 +217,10 @@ export default function ScheduleScreen() {
 
         if (workspaceIdParam) {
             workspaceId = workspaceIdParam;
+        } else if (activeWorkspaceId) {
+            workspaceId = activeWorkspaceId;
         } else {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            workspaceId = await workspaceClient.ensureActiveWorkspace();
+            throw new Error('No active workspace');
         }
 
         setCreating(true);
@@ -278,9 +281,10 @@ export default function ScheduleScreen() {
 
         if (workspaceIdParam) {
             workspaceId = workspaceIdParam;
+        } else if (activeWorkspaceId) {
+            workspaceId = activeWorkspaceId;
         } else {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            workspaceId = await workspaceClient.ensureActiveWorkspace();
+            throw new Error('No active workspace');
         }
 
         const previous = blocks;
