@@ -7,12 +7,10 @@ import { fetchScheduleBlocksWithDate } from '../services/scheduleClient';
  * @param workspaceId - workspace to fetch blocks for (required)
  * @param date - YYYY-MM-DD string (optional). If provided, filters blocks by day_of_week
  *               derived from the date. If omitted, returns all blocks (backward compatible).
- * @param getAccessToken - auth token getter from AuthContext
  */
 export function useSchedule(
     workspaceId: string | undefined,
     date: string | undefined,
-    getAccessToken: () => string | null,
 ) {
     return useQuery({
         queryKey: ['schedule', workspaceId, date],

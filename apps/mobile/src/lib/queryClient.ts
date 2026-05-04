@@ -1,5 +1,5 @@
-import { QueryClient } from '@tanstack/react-query';
-import { AppState, AppStateStatus } from 'react-native';
+import { QueryClient, focusManager } from '@tanstack/react-query';
+import { AppState } from 'react-native';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,13 +13,12 @@ export const queryClient = new QueryClient({
   },
 });
 
-// React Native focus manager — refetch when app comes to foreground
-let appStateSubscription: { remove: () => void } | null = null;
-
-function handleAppStateChange(nextState: AppStateStatus) {
-  if (nextState === 'active') {
-    queryClient.invalidateQueries();
-  }
-}
-
-AppState.addEventListener('change', handleAppStateChange);
+// React Native focus manager — proper TanStack Query pattern for RN
+focusManager.setEventListener((handleFocus) => {
+  const subscription = AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      handleFocus(true);
+    }
+  });
+  return () => subscription.remove();
+});
