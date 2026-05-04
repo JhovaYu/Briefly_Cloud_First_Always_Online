@@ -401,17 +401,97 @@ SYNC PASS
 - `useTodaySummary` no modificado
 - `@tuxnotas/shared` no modificado
 
-**Deuda PM-10B.1b / restante:**
+**Deuda PM-10B.1b / restante:** ninguna (PM-10B.1c completo en `7fa6655`)
+
+**Próximo paso:** PM-10C — Join workspace / membership A→B.
+
+### PM-10B.1c — Today Dashboard React Query Migration (PASS)
+**Alcance:** `apps/mobile` — migrar `useTodaySummary` de useState/manual fetch a React Query hooks con date filter local
+**Resultado:** PASS
+
+**Commits registrados:**
+- `7fa6655` feat(mobile): use date-filtered React Query data in Today
+
+**Implementación:**
+
+| Archivo | Cambio |
+|---|---|
+| `apps/mobile/src/utils/dateUtils.ts` | Creado — `getLocalDateString()` usando `getFullYear()/getMonth()+1/getDate()` (local, NO UTC) |
+| `apps/mobile/src/hooks/useTodaySummary.ts` | Reescrito — usa `useWorkspaces/useTasks/useSchedule` con `date=YYYY-MM-DD` local; mismo shape de retorno |
+| `apps/mobile/app/today.tsx` | Removido `useAuth` import y `getAccessToken` — ahora llama `useTodaySummary()` sin args |
+
+**Diseño clave:**
+- `getLocalDateString()` → `YYYY-MM-DD` basado en hora LOCAL del dispositivo, nunca UTC
+- `useTodaySummary` combina `isLoading` de 3 queries en `loading` único
+- Primer error convertido a `string` para el campo `error`
+- `refresh()` usa `queryClient.invalidateQueries()` para los 3 query keys
+- Mismo shape de retorno: `{ loading, error, refresh, nextScheduleBlock, pendingTasksCount, topTasks, workspaceName }`
+
+**Criterios cumplidos:**
+- `today.tsx` no necesita cambios de UI (hook mantiene contrato original)
+- Fecha local del dispositivo usada, NO `toISOString()`
+- `?date=YYYY-MM-DD` enviado al backend con día LOCAL
+- tsc `--noEmit`: **0 errors**
+- No backend modificado
+- No widgets/modales/crud cambiados
+
+**Deuda PM-10B.1c / restante:** nenhuma (completo)
+
+### PM-10B.2 — Mobile Active Workspace + CRUD Invalidation (PASS)
+**Alcance:** `apps/mobile` — persistir workspace activo + invalidar React Query tras mutaciones CRUD
+**Resultado:** PASS
+
+**Commits registrados:**
+- `c417f9e` feat(mobile): persist active workspace selection
+- `989cdb4` fix(mobile): invalidate Today queries after CRUD mutations
+
+**Implementación — PM-10B.2a (activeWorkspaceId persistido):**
+
+| Archivo | Cambio |
+|---|---|
+| `apps/mobile/src/services/activeWorkspaceStore.ts` | Creado — `getActiveWorkspaceId/setActiveWorkspaceId/clearActiveWorkspaceId` via SecureStore |
+| `apps/mobile/src/hooks/useActiveWorkspace.ts` | Creado — lee ID persistido, valida contra workspaces list, fallback a `workspaces[0]`, expone `setActiveWorkspace` |
+| `apps/mobile/src/hooks/useTodaySummary.ts` | Actualizado — usa `useActiveWorkspace` en vez de `workspaces?.[0]?.id` directo |
+| `apps/mobile/app/workspaces.tsx` | Actualizado — long-press establece activo; badge "Activo" en workspace seleccionado; hint "Mantén presionado para usar en Hoy" |
+
+**Diseño — fallback de workspace activo:**
+```
+stored ID existe en workspaces list? → YES → usar stored
+        ↓ NO
+clear stored ID → fallback a workspaces[0]
+        ↓
+workspaces[0] existe? → YES → usarlo
+        ↓ NO
+return null → useTasks/useSchedule disabled (enabled: false)
+```
+
+**Implementación — PM-10B.2b (CRUD invalidation):**
+
+| Archivo | Cambio |
+|---|---|
+| `apps/mobile/app/tasks.tsx` | `queryClient.invalidateQueries({ queryKey: ['tasks'] })` tras create/update/delete exitosos |
+| `apps/mobile/app/schedule.tsx` | `queryClient.invalidateQueries({ queryKey: ['schedule'] })` tras create/update/delete exitosos |
+
+**Criterios cumplidos:**
+- activeWorkspaceId persiste entre reinicios (SecureStore)
+- Workspaces screen permite seleccionar activo con long-press
+- Today usa workspace activo, no siempre `workspaces[0]`
+- Fallback seguro si stored ID ya no existe o no hay workspaces
+- Tasks/schedule CRUD invalida queries — Today recibe datos frescos tras mutaciones
+- tsc `--noEmit`: **0 errors**
+- No backend/desktop/@tuxnotas/shared/package cambios
+
+**Deuda PM-10B.2 / restante:**
 
 | Severidad | Hallazgo |
 |-----------|----------|
-| 🟡 MEDIO | PM-10B.1c: migrar `useTodaySummary` para usar `useWorkspaces/useTasks/useSchedule` con `date` filter UTC |
-| 🟡 MEDIO | PM-10B.2: migrar factories legacy `createWorkspaceClient`/`createScheduleClient`/`createPlanningClient` para usar `fetchWithAuth` internamente si se requiere |
-| 🟡 MEDIO | PM-10B.2: `queryClient.clear()` debería llamarse en `finally` de `signOut` para asegurar limpieza incluso si `auth.signOut()` lanza |
+| 🟡 MEDIO | PM-10B.2 follow-up: `queryClient.clear()` debería llamarse en `finally` de `signOut` para asegurar limpieza incluso si `auth.signOut()` lanza |
+| 🟡 MEDIO | PM-10B.2 follow-up: migrar factories legacy `createWorkspaceClient/createScheduleClient/createPlanningClient` para usar `fetchWithAuth` internamente |
+| 🔵 BAJO | PM-10B.2 follow-up: UX selección activa — agregar botón visible "Usar en Hoy" además de long-press |
 | 🔵 BAJO | PM-10B.3: AsyncStorage/persistQueryClient para cache offline de widgets Android |
 | 🔵 BAJO | Deuda preexistente expo-doctor: Metro config overrides, duplicate React versions, react-native-webrtc untested, 4 patch version mismatches |
 
-**Próximo paso:** PM-10B.1c — Today Dashboard consume hooks nuevos con date filter.
+**Próximo paso:** PM-10C — Join workspace / membership A→B.
 
 ### PM-08B Deuda y caveats
 
