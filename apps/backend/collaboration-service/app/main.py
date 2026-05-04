@@ -7,6 +7,7 @@ from app.api import routes
 from app.config.settings import Settings
 from app.adapters.pycrdt_room_manager import PycrdtRoomManager
 from app.api.crdt_routes import create_crdt_app
+from app.shared.collab_debug import CRDT_DEBUG_MARKER
 
 
 # Global room manager singleton (started on startup, stopped on shutdown)
@@ -81,6 +82,11 @@ if _settings.ENABLE_EXPERIMENTAL_CRDT_ENDPOINT:
     if document_store is not None:
         manager.set_max_snapshot_bytes(_settings.MAX_SNAPSHOT_BYTES)
     app.mount("/collab/crdt", crdt_app, name="crdt-ws")
+    print(
+        f"[crdt] APP_CREATED path=/collab/crdt store_type={_settings.DOCUMENT_STORE_TYPE} "
+        f"marker={CRDT_DEBUG_MARKER}",
+        flush=True,
+    )
     _room_manager = manager
 
 

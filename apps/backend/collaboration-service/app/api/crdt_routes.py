@@ -27,6 +27,32 @@ from app.use_cases.validate_collaboration_ticket import (
 )
 
 
+# ── Diagnostic ASGI wrapper ───────────────────────────────────────────────────
+# Wraps the ASGIServer to log scope before it reaches on_connect.
+# This confirms whether the ASGI scope reaches the sub-app at all.
+class _DiagnosticsASGIApp:
+    """ASGI app that logs scope then delegates to a wrapped app."""
+
+    def __init__(self, wrapped, manager):
+        self._wrapped = wrapped
+        self._manager = manager
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "websocket":
+            path = scope.get("path", "")
+            qs = scope.get("query_string", b"")
+            has_query = bool(qs and len(qs) > 0)
+            qs_decoded = qs.decode() if qs else ""
+            qs_safe = qs_decoded.split("&")[0].split("=")[0] + "=..." if qs_decoded else "absent"
+            print(
+                f"[crdt] ASGI_SCOPE type=websocket path={path!r} "
+                f"has_query={has_query} query_key_present={qs_safe!r} "
+                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
+                flush=True,
+            )
+        await self._wrapped(scope, receive, send)
+
+
 # Global room manager instance (singleton per service)
 _room_manager = None
 
@@ -212,7 +238,9 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
         await manager.handle_disconnect(channel_id)
 
     asgi_server = ASGIServer(ws_server, on_connect=on_connect, on_disconnect=on_disconnect)
-    return asgi_server, manager
+    # Wrap with diagnostic ASGI app to log scope before on_connect
+    wrapped = _DiagnosticsASGIApp(asgi_server, manager)
+    return wrapped, manager
 
 
 def create_crdt_subapp():
