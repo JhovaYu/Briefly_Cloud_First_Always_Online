@@ -348,7 +348,7 @@ function App() {
       onBack={handleBack}
       signalingUrl={screen.type === 'workspace' ? screen.signalingUrl : undefined}
       workspaceService={workspaceSvc}
-      cloudWorkspaceId={planningWorkspaceId}
+      cloudWorkspaceId={screen.type === 'workspace' ? screen.poolId : undefined}
       getAccessToken={getAccessToken}
     />
   );
