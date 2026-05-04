@@ -17,7 +17,6 @@ import {
     RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../src/services/AuthContext';
 import { useTodaySummary } from '../src/hooks/useTodaySummary';
 
 const BACKEND_BASE =
@@ -155,8 +154,6 @@ function QuickActions({
 
 export default function TodayScreen() {
     const router = useRouter();
-    const { loading: authLoading, getAccessToken } = useAuth();
-
     const {
         loading,
         error,
@@ -165,9 +162,9 @@ export default function TodayScreen() {
         pendingTasksCount,
         topTasks,
         workspaceName,
-    } = useTodaySummary(getAccessToken);
+    } = useTodaySummary();
 
-    if (authLoading) {
+    if (loading) {
         return (
             <View style={styles.centered}>
                 <ActivityIndicator color="#aeb4ff" size="large" />

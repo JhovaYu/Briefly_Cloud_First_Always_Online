@@ -1,17 +1,22 @@
 /**
  * useTodaySummary — aggregates schedule + task data for the Today Dashboard.
  *
- * Accepts getAccessToken so it can be called as a regular hook (useAuth
- * must be called at the top level of a component, not inside this hook).
+ * Migrated to React Query hooks in PM-10B.1c.
+ * - Uses useWorkspaces() / useTasks() / useSchedule() for data fetching
+ * - date param uses LOCAL device date (getLocalDateString), NOT UTC
+ * - Maintains identical return shape: loading, error, refresh,
+ *   nextScheduleBlock, pendingTasksCount, topTasks, workspaceName
  *
- * Exposes: loading, error, refresh, nextScheduleBlock, pendingTasksCount,
- * topTasks, workspaceName.
+ * Does NOT accept getAccessToken — fetchWithAuth handles tokens internally
+ * via supabase.auth.getSession() per request.
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { createPlanningClient } from '../services/planningClient';
-import { createScheduleClient, type ScheduleBlock } from '../services/scheduleClient';
-import { createWorkspaceClient } from '../services/workspaceClient';
+import { useQueryClient } from '@tanstack/react-query';
+import { useWorkspaces } from './useWorkspaces';
+import { useTasks } from './useTasks';
+import { useSchedule } from './useSchedule';
+import { getLocalDateString } from '../utils/dateUtils';
+import type { ScheduleBlock } from '../services/scheduleClient';
 import type { PlanningTask } from '@tuxnotas/shared/src/domain/Entities';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -50,7 +55,7 @@ function findNextScheduleBlock(blocks: ScheduleBlock[]): ScheduleBlock | null {
     return todayBlocks[0];
 }
 
-// ── Hook ───────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────
 
 export interface TodaySummary {
     loading: boolean;
@@ -62,64 +67,67 @@ export interface TodaySummary {
     workspaceName: string;
 }
 
-export function useTodaySummary(
-    getAccessToken: () => string | null,
-    workspaceId?: string,
-): TodaySummary {
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [workspaceName, setWorkspaceName] = useState('');
-    const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
-    const [tasks, setTasks] = useState<PlanningTask[]>([]);
+// ── Hook ───────────────────────────────────────────────────────────────────
 
-    const load = useCallback(async () => {
-        const token = getAccessToken();
-        if (!token) {
-            setError('No session');
-            setLoading(false);
-            return;
-        }
+export function useTodaySummary(): TodaySummary {
+    const queryClient = useQueryClient();
+    const todayDate = getLocalDateString();
 
-        setLoading(true);
-        setError(null);
+    // Fetch workspaces — derive workspaceId from first workspace
+    const {
+        data: workspaces,
+        isLoading: wsLoading,
+        error: wsError,
+    } = useWorkspaces();
 
-        try {
-            const workspaceClient = createWorkspaceClient(getAccessToken);
-            const scheduleClient = createScheduleClient(getAccessToken);
-            const planningClient = createPlanningClient(getAccessToken);
+    const workspaceId = workspaces?.[0]?.id;
+    const workspaceName = workspaces?.[0]?.name ?? '';
 
-            const wsId = workspaceId ?? await workspaceClient.ensureActiveWorkspace();
+    // Fetch tasks for today (local date filter)
+    const {
+        data: tasksData,
+        isLoading: tasksLoading,
+        error: tasksError,
+    } = useTasks(workspaceId, todayDate);
 
-            const [ws, fetchedBlocks, fetchedTasks] = await Promise.all([
-                workspaceClient.getWorkspace(wsId),
-                scheduleClient.listScheduleBlocks(wsId),
-                planningClient.listTasks(wsId),
-            ]);
+    // Fetch schedule blocks for today (local date → day_of_week filter)
+    const {
+        data: blocksData,
+        isLoading: scheduleLoading,
+        error: scheduleError,
+    } = useSchedule(workspaceId, todayDate);
 
-            setBlocks(fetchedBlocks);
-            setTasks(fetchedTasks);
-            setWorkspaceName(ws.name ?? 'Workspace');
-        } catch (err: any) {
-            setError(err?.message ?? 'Error loading dashboard');
-        } finally {
-            setLoading(false);
-        }
-    }, [getAccessToken, workspaceId]);
+    // Combine loading state — true while any query is loading
+    const loading = wsLoading || tasksLoading || scheduleLoading;
 
-    useEffect(() => {
-        load();
-    }, [load]);
+    // First non-null error from any query
+    const firstError = wsError ?? tasksError ?? scheduleError;
+    const error = firstError
+        ? firstError instanceof Error
+            ? firstError.message
+            : String(firstError)
+        : null;
 
-    const pendingTasks = tasks.filter(t => t.state !== 'done');
+    // Derive task stats from fetched data
+    const pendingTasks = (tasksData ?? []).filter(t => t.state !== 'done');
     const topTasks = pendingTasks.slice(0, 3);
-    const nextScheduleBlock = findNextScheduleBlock(blocks);
+    const pendingTasksCount = pendingTasks.length;
+
+    // Find next schedule block from today's blocks
+    const nextScheduleBlock = findNextScheduleBlock(blocksData ?? []);
+
+    const refresh = async () => {
+        await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+        await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        await queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    };
 
     return {
         loading,
         error,
-        refresh: load,
+        refresh,
         nextScheduleBlock,
-        pendingTasksCount: pendingTasks.length,
+        pendingTasksCount,
         topTasks,
         workspaceName,
     };
