@@ -72,6 +72,10 @@ export default function WorkspacesScreen() {
         router.push(`/workspace-detail?id=${encodeURIComponent(workspace.id)}`);
     };
 
+    const handleUseAsActive = (workspace: Workspace) => {
+        setActiveWorkspace(workspace.id);
+    };
+
     const renderItem = ({ item }: { item: Workspace }) => {
         const isActive = item.id === activeWorkspaceId;
         return (
@@ -93,10 +97,19 @@ export default function WorkspacesScreen() {
                         )}
                     </View>
                     <Text style={styles.workspaceDate}>{formatDate(item.created_at)}</Text>
-                    {!isActive && (
-                        <Text style={styles.setActiveHint}>Mantén presionado para usar en Hoy</Text>
-                    )}
                 </View>
+                {isActive ? (
+                    <View style={styles.activeBadge}>
+                        <Text style={styles.activeBadgeText}>Activo</Text>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        style={styles.useActiveBtn}
+                        onPress={() => handleUseAsActive(item)}
+                    >
+                        <Text style={styles.useActiveBtnText}>Usar en Hoy</Text>
+                    </TouchableOpacity>
+                )}
                 <Text style={styles.workspaceArrow}>→</Text>
             </TouchableOpacity>
         );
@@ -220,7 +233,15 @@ const styles = StyleSheet.create({
         borderColor: '#2d6a2d',
     },
     activeBadgeText: { color: '#4ade80', fontSize: 10, fontWeight: '700' },
-    setActiveHint: { color: '#444', fontSize: 11, marginTop: 3 },
+    useActiveBtn: {
+        backgroundColor: '#252540',
+        borderRadius: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderWidth: 1,
+        borderColor: '#3a3a6a',
+    },
+    useActiveBtnText: { color: '#aeb4ff', fontSize: 11, fontWeight: '600' },
     workspaceDate: { color: '#555', fontSize: 12 },
     workspaceArrow: { color: '#555', fontSize: 18 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
