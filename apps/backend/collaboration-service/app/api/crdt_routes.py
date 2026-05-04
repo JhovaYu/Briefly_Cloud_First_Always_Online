@@ -4,16 +4,17 @@ CRDT WebSocket endpoint using pycrdt-websocket.
 PM-08A: Mounted unconditionally at /collab/crdt.
 Auth via short-lived opaque ticket in query string (?ticket=<id>).
 
-Security note (PM-09 debt):
-  Ticket travels in query string. WSS encrypts transit, but server access
-  logs may record ?ticket=... values. TTL is short (60s) and environment
-  is controlled for the PM-08A demo. Revisit in PM-09: either move ticket
-  to WebSocket first-message or redact access logs.
+PM-09A.2 fix:
+  Validation moved to _WSAuthASGIApp wrapper — ticket is verified BEFORE
+  pycrdt-websocket sees the connection. If invalid/expired, a proper
+  WebSocket close frame (1008) is sent so the client never sees HTTP 500.
 """
 
 import logging
 import os
 from typing import Any
+
+from starlette.websockets import WebSocket
 
 from app.shared.collab_debug import CRDT_DEBUG_MARKER
 from pycrdt.websocket import ASGIServer, WebsocketServer
@@ -32,29 +33,103 @@ from app.use_cases.validate_collaboration_ticket import (
 )
 
 
-# ── Diagnostic ASGI wrapper ───────────────────────────────────────────────────
-# Wraps the ASGIServer to log scope before it reaches on_connect.
-# This confirms whether the ASGI scope reaches the sub-app at all.
-class _DiagnosticsASGIApp:
-    """ASGI app that logs scope then delegates to a wrapped app."""
+# ── WebSocket auth ASGI wrapper (PM-09A.2) ─────────────────────────────────
+# Wraps ASGIServer to intercept WebSocket connections BEFORE pycrdt-websocket.
+# Validates ticket in the wrapper — if invalid/expired/missing, sends a proper
+# WebSocket close frame (1008) so the client never sees HTTP 500.
+class _WSAuthASGIApp:
+    """ASGI app that pre-validates tickets, then delegates to the real app."""
 
-    def __init__(self, wrapped, manager):
+    def __init__(self, wrapped, manager, ticket_store):
         self._wrapped = wrapped
         self._manager = manager
+        self._ticket_store = ticket_store
 
     async def __call__(self, scope, receive, send):
-        if _CRDT_DIAGNOSTICS and scope.get("type") == "websocket":
-            path = scope.get("path", "")
-            qs = scope.get("query_string", b"")
-            has_query = bool(qs and len(qs) > 0)
-            qs_decoded = qs.decode() if qs else ""
-            qs_safe = qs_decoded.split("&")[0].split("=")[0] + "=..." if qs_decoded else "absent"
+        if scope.get("type") != "websocket":
+            await self._wrapped(scope, receive, send)
+            return
+
+        # ── Extract ticket from query string (safe: no logging of ticket value) ──
+        query_string = scope.get("query_string", b"").decode()
+        params = {}
+        if query_string:
+            for part in query_string.split("&"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    params[k] = v
+
+        ticket_id = params.get("ticket", "")
+        raw_path = scope.get("path", "")
+        path_for_log = raw_path.split("?")[0]  # strip query for safe logging
+
+        print(
+            f"[crdt] ATTEMPT marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
+            f"path={path_for_log!r} has_ticket={str(bool(ticket_id))} "
+            f"store_id={id(self._ticket_store)}",
+            flush=True,
+        )
+
+        ws_pair = extract_workspace_document_from_ws_path(raw_path)
+
+        if ws_pair is None:
             print(
-                f"[crdt] ASGI_SCOPE type=websocket path={path!r} "
-                f"has_query={has_query} query_key_present={qs_safe!r} "
-                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
+                f"[crdt] DENIED reason=invalid_path marker={CRDT_DEBUG_MARKER} "
+                f"pid={_crdt_pid} path={path_for_log!r}",
                 flush=True,
             )
+            ws = WebSocket(scope, receive, send)
+            await ws.accept()
+            await ws.close(code=1008, reason="invalid_path")
+            return
+
+        workspace_id, document_id = ws_pair
+        room_key = f"{workspace_id}/{document_id}"
+
+        # ── Validate ticket ────────────────────────────────────────────────────
+        denial_reason = None
+        try:
+            if not ticket_id:
+                denial_reason = "missing_ticket"
+            else:
+                await validate_collaboration_ticket(
+                    ticket_id=ticket_id,
+                    workspace_id=workspace_id,
+                    document_id=document_id,
+                    ticket_store=self._ticket_store,
+                )
+        except TicketInvalid as e:
+            reason = getattr(e, "args", ["unknown"])[0] if e.args else "unknown"
+            if "required" in reason or "missing" in reason:
+                denial_reason = "missing_ticket"
+            elif "expired" in reason:
+                denial_reason = "ticket_expired"
+            elif "does not match" in reason or "mismatch" in reason:
+                denial_reason = "ticket_mismatch"
+            elif "invalid" in reason:
+                denial_reason = "ticket_invalid"
+            else:
+                denial_reason = "ticket_rejected"
+
+        if denial_reason:
+            print(
+                f"[crdt] DENIED reason={denial_reason} marker={CRDT_DEBUG_MARKER} "
+                f"pid={_crdt_pid} ws_id={workspace_id!r} doc_id={document_id!r} "
+                f"has_ticket={str(bool(ticket_id))}",
+                flush=True,
+            )
+            ws = WebSocket(scope, receive, send)
+            await ws.accept()
+            await ws.close(code=1008, reason=denial_reason)
+            return
+
+        # Valid — delegate to pycrdt-websocket
+        print(
+            f"[crdt] ALLOWED room_key={room_key!r} "
+            f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
+            f"store_id={id(self._ticket_store)}",
+            flush=True,
+        )
         await self._wrapped(scope, receive, send)
 
 
@@ -64,15 +139,6 @@ _room_manager = None
 # Diagnostic logger — writes to stdout so it appears in `docker compose logs`
 # Use a name under uvicorn so it is captured by the Docker log driver
 _logger = logging.getLogger("uvicorn.error")
-
-
-def _mask_ticket(ticket_id: str) -> str:
-    """Return a safe representation of a ticket ID for logging — no full values."""
-    if not ticket_id:
-        return "absent"
-    if len(ticket_id) <= 4:
-        return "***"
-    return ticket_id[:4] + "..."
 
 
 def _log(prefix: str, msg: str) -> None:
@@ -131,121 +197,31 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
     if document_store is not None:
         manager.set_document_store(document_store)
     ws_server = manager.server
+    ticket_store = get_ticket_store()
 
     async def on_connect(msg: dict, scope: dict) -> bool:
-        """Validate ticket from query string before accepting WebSocket connection.
+        """Called by pycrdt-websocket after wrapper validation passes.
 
-        Ticket must be present as ?ticket=<opaque_id>
-        and must match the workspace_id/document_id from the path.
-
-        pycrdt-websocket on_connect boolean semantics:
-            return True  => reject / close the WebSocket connection
-            return False => accept / allow the WebSocket connection
+        At this point the ticket is already valid (wrapper validated it).
+        We only do room setup here — no ticket validation needed.
         """
-        # ── Extract ticket from query string ──────────────────────────────────
-        query_string = scope.get("query_string", b"").decode()
-        params = {}
-        if query_string:
-            for part in query_string.split("&"):
-                if "=" in part:
-                    k, v = part.split("=", 1)
-                    params[k] = v
-
-        ticket_id = params.get("ticket", "")
-
-        # ── Extract workspace_id and document_id from path ───────────────────
         raw_path = scope.get("path", "")
         ws_pair = extract_workspace_document_from_ws_path(raw_path)
-
-        # ── Diagnostic: always log ATTEMPT with marker and pid ───────────────
-        path_for_log = raw_path.split("?")[0]  # strip query for safe log
-        ticket_store = get_ticket_store()
-        print(
-            f"[crdt] ATTEMPT marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
-            f"path={path_for_log!r} has_ticket={str(bool(ticket_id))} "
-            f"store_id={id(ticket_store)}",
-            flush=True,
-        )
-
         if ws_pair is None:
-            print(
-                f"[crdt] DENIED reason=invalid_path marker={CRDT_DEBUG_MARKER} "
-                f"pid={_crdt_pid} path={path_for_log!r}",
-                flush=True,
-            )
-            return True  # reject: malformed path
+            return True  # defensive: should not happen after wrapper check
 
         workspace_id, document_id = ws_pair
-
-        path_type = "full" if raw_path.startswith("/collab/crdt") else "relative"
         room_key = f"{workspace_id}/{document_id}"
 
-        if _CRDT_DIAGNOSTICS:
-            print(
-                f"[crdt] PARSED path_type={path_type} ws_id={workspace_id!r} "
-                f"doc_id={document_id!r} room_key={room_key!r} "
-                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
-                flush=True,
-            )
-
-        # ── Validate ticket ──────────────────────────────────────────────────
-        try:
-            if not ticket_id:
-                print(
-                    f"[crdt] DENIED reason=missing_ticket marker={CRDT_DEBUG_MARKER} "
-                    f"pid={_crdt_pid} ws_id={workspace_id!r} doc_id={document_id!r}",
-                    flush=True,
-                )
-                return True  # reject: no ticket
-
-            await validate_collaboration_ticket(
-                ticket_id=ticket_id,
-                workspace_id=workspace_id,
-                document_id=document_id,
-                ticket_store=ticket_store,
-            )
-            # Pre-create room using the clean room key format
-            channel_id = id(msg)
-            manager.track_channel(channel_id, room_key)
-            await manager._ensure_room_for_path(room_key, workspace_id, document_id)
-
-            print(
-                f"[crdt] ALLOWED room_key={room_key!r} "
-                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
-                f"store_id={id(ticket_store)}",
-                flush=True,
-            )
-            return False  # accept
-
-        except TicketInvalid as e:
-            reason = getattr(e, "args", ["unknown"])[0] if e.args else "unknown"
-            if "required" in reason or "missing" in reason:
-                denial_type = "missing_ticket"
-            elif "expired" in reason:
-                denial_type = "ticket_expired"
-            elif "does not match" in reason or "mismatch" in reason:
-                denial_type = "ticket_mismatch"
-            elif "invalid" in reason:
-                denial_type = "ticket_invalid"
-            else:
-                denial_type = "ticket_rejected"
-
-            print(
-                f"[crdt] DENIED reason={denial_type} marker={CRDT_DEBUG_MARKER} "
-                f"pid={_crdt_pid} ws_id={workspace_id!r} doc_id={document_id!r} "
-                f"ticket={_mask_ticket(ticket_id)}",
-                flush=True,
-            )
-            return True  # reject
-
-    async def on_disconnect(msg: dict) -> None:
-        """Handle client disconnect: save snapshot if last client, then cleanup."""
         channel_id = id(msg)
-        await manager.handle_disconnect(channel_id)
+        manager.track_channel(channel_id, room_key)
+        await manager._ensure_room_for_path(room_key, workspace_id, document_id)
+
+        return False  # accept
 
     asgi_server = ASGIServer(ws_server, on_connect=on_connect, on_disconnect=on_disconnect)
-    # Wrap with diagnostic ASGI app to log scope before on_connect
-    wrapped = _DiagnosticsASGIApp(asgi_server, manager)
+    # PM-09A.2: validate ticket in ASGI wrapper BEFORE pycrdt-websocket sees the connection
+    wrapped = _WSAuthASGIApp(asgi_server, manager, ticket_store)
     return wrapped, manager
 
 
