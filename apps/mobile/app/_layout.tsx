@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider } from '../src/AppContext';
 import { AuthProvider } from '../src/services/AuthContext';
+import { queryClient } from '../src/lib/queryClient';
 import * as QuickActions from 'expo-quick-actions';
 import { router } from 'expo-router';
 import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
@@ -68,18 +70,20 @@ export default function Layout() {
     return (
         <AppProvider>
             <AuthProvider>
-                <SafeAreaProvider>
-                    <SafeAreaView style={{ flex: 1 }}>
-                        <StatusBar style="auto" />
-                        {ready ? (
-                            <Stack screenOptions={{ headerShown: false }} />
-                        ) : (
-                            <View style={styles.loading}>
-                                <ActivityIndicator color="#aeb4ff" size="large" />
-                            </View>
-                        )}
-                    </SafeAreaView>
-                </SafeAreaProvider>
+                <QueryClientProvider client={queryClient}>
+                    <SafeAreaProvider>
+                        <SafeAreaView style={{ flex: 1 }}>
+                            <StatusBar style="auto" />
+                            {ready ? (
+                                <Stack screenOptions={{ headerShown: false }} />
+                            ) : (
+                                <View style={styles.loading}>
+                                    <ActivityIndicator color="#aeb4ff" size="large" />
+                                </View>
+                            )}
+                        </SafeAreaView>
+                    </SafeAreaProvider>
+                </QueryClientProvider>
             </AuthProvider>
         </AppProvider>
     );

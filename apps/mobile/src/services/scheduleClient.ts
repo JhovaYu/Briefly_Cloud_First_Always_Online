@@ -11,6 +11,7 @@
  *   DELETE /api/schedule/workspaces/{workspace_id}/schedule-blocks/{block_id}
  */
 
+import { fetchWithAuth } from '../api/fetchWithAuth';
 import { createUuid } from '@tuxnotas/shared/src/logic/uuid';
 
 const BASE_URL =
@@ -160,3 +161,23 @@ export function createScheduleClient(getAccessToken: () => string | null) {
 }
 
 export { BASE_URL as SCHEDULE_API_BASE_URL };
+
+/**
+ * Fetches schedule blocks filtered by date using the fresh token per request.
+ * date: YYYY-MM-DD string. If omitted, returns all blocks (backward compatible).
+ */
+export async function fetchScheduleBlocksWithDate(
+    workspaceId: string,
+    date?: string,
+): Promise<ScheduleBlock[]> {
+    let url = `${BASE_URL}/workspaces/${workspaceId}/schedule-blocks`;
+    if (date) {
+        url += `?date=${date}`;
+    }
+    const response = await fetchWithAuth(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch schedule blocks: ${response.status}`);
+    }
+    const json = await response.json() as { blocks: ScheduleBlock[] };
+    return json.blocks ?? [];
+}

@@ -11,6 +11,7 @@
  *   GET    /workspaces/{workspaceId}
  */
 
+import { fetchWithAuth } from '../api/fetchWithAuth';
 import type { Workspace } from '@tuxnotas/shared/src/domain/Entities';
 
 const BASE_URL =
@@ -144,3 +145,16 @@ export function createWorkspaceClient(getAccessToken: () => string | null) {
 }
 
 export { BASE_URL as WORKSPACE_API_BASE_URL };
+
+/**
+ * Fetches workspaces using a fresh token per request via fetchWithAuth.
+ * Uses supabase.auth.getSession() to obtain a current access token.
+ */
+export async function fetchWorkspacesWithAuth(): Promise<Workspace[]> {
+    const response = await fetchWithAuth(`${BASE_URL}/workspaces`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch workspaces: ${response.status}`);
+    }
+    const json = await response.json() as { workspaces: Workspace[] };
+    return json.workspaces ?? [];
+}
