@@ -15,10 +15,10 @@ from app.use_cases.authenticate_collaboration import authenticate_collaboration
 from app.use_cases.issue_collaboration_ticket import (
     issue_collaboration_ticket,
 )
-from app.api.crdt_routes import CRDT_DEBUG_MARKER
+from app.shared.collab_debug import CRDT_DEBUG_MARKER
 
 
-# Build marker for version-safe diagnostic correlation
+# Do not import crdt_routes here; it imports get_ticket_store from this module.
 _ticket_debug_marker = "pm08a-crdt-debug-v1"
 _ticket_pid = os.getpid()
 

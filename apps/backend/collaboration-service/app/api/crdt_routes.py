@@ -10,14 +10,11 @@ The stable endpoint with verified auth is /collab/{ws_id}/{doc_id} (PM-03B first
 """
 
 import logging
+import os
 from typing import Any
 
-import os
-
+from app.shared.collab_debug import CRDT_DEBUG_MARKER
 from pycrdt.websocket import ASGIServer, WebsocketServer
-
-# Build marker for version-safe diagnostic correlation
-CRDT_DEBUG_MARKER = "pm08a-crdt-debug-v1"
 
 # Module-level pid for cross-process correlation
 _crdt_pid = os.getpid()
