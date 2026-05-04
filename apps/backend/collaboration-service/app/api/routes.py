@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import traceback
 
 from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect, HTTPException, status
@@ -14,6 +15,12 @@ from app.use_cases.authenticate_collaboration import authenticate_collaboration
 from app.use_cases.issue_collaboration_ticket import (
     issue_collaboration_ticket,
 )
+from app.api.crdt_routes import CRDT_DEBUG_MARKER
+
+
+# Build marker for version-safe diagnostic correlation
+_ticket_debug_marker = "pm08a-crdt-debug-v1"
+_ticket_pid = os.getpid()
 
 
 # Diagnostic logger for Docker — writes to stdout so `docker compose logs` captures it
@@ -71,6 +78,20 @@ def collab_health():
 @router.get("/healthz")
 def collab_healthz():
     return {"status": "ok", "service": "collaboration-service"}
+
+
+@router.get("/debug/version")
+async def debug_version():
+    """Safe diagnostic endpoint — no secrets, no env vars, no tokens."""
+    return {
+        "service": "collaboration-service",
+        "marker": "pm08a-crdt-debug-v1",
+        "pid": os.getpid(),
+        "ticket_store_type": "in_memory",
+        "ticket_store_id": id(get_ticket_store()),
+        "crdt_debug_enabled": True,
+        "has_on_connect_marker": True,
+    }
 
 
 @router.websocket("/echo")
@@ -204,7 +225,7 @@ async def issue_ticket(
             permission_timeout=settings.WORKSPACE_PERMISSION_TIMEOUT_SECONDS,
             ticket_ttl=settings.TICKET_TTL_SECONDS,
         )
-        _log("INFO", f"ticket_issued ws_id={workspace_id!r} doc_id={document_id!r} role={result.get('role')}")
+        _log("INFO", f"ticket_issued ws_id={workspace_id!r} doc_id={document_id!r} role={result.get('role')} pid={_ticket_pid} store_id={id(get_ticket_store())} marker={_ticket_debug_marker}")
         return TicketResponse(**result)
     except PermissionDenied as e:
         msg = str(e)

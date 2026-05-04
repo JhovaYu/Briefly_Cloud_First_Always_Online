@@ -12,7 +12,15 @@ The stable endpoint with verified auth is /collab/{ws_id}/{doc_id} (PM-03B first
 import logging
 from typing import Any
 
+import os
+
 from pycrdt.websocket import ASGIServer, WebsocketServer
+
+# Build marker for version-safe diagnostic correlation
+CRDT_DEBUG_MARKER = "pm08a-crdt-debug-v1"
+
+# Module-level pid for cross-process correlation
+_crdt_pid = os.getpid()
 
 from app.adapters.in_memory_ticket_store import InMemoryTicketStore
 from app.api.routes import get_ticket_store
@@ -121,20 +129,44 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
         raw_path = scope.get("path", "")
         ws_pair = extract_workspace_document_from_ws_path(raw_path)
 
+        # ── Diagnostic: always log ATTEMPT with marker and pid ───────────────
+        path_for_log = raw_path.split("?")[0]  # strip query for safe log
+        ticket_store = get_ticket_store()
+        print(
+            f"[crdt] ATTEMPT marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
+            f"path={path_for_log!r} has_ticket={str(bool(ticket_id))} "
+            f"store_id={id(ticket_store)}",
+            flush=True,
+        )
+
         if ws_pair is None:
-            _log("WARNING", f"[DENIED] invalid_ws_path path={raw_path!r} has_ticket={str(bool(ticket_id))}")
+            print(
+                f"[crdt] DENIED reason=invalid_path marker={CRDT_DEBUG_MARKER} "
+                f"pid={_crdt_pid} path={path_for_log!r}",
+                flush=True,
+            )
             return True  # reject: malformed path
 
         workspace_id, document_id = ws_pair
 
         path_type = "full" if raw_path.startswith("/collab/crdt") else "relative"
-        _log("INFO", f"[ATTEMPT] ws_connect path_type={path_type} ws_id={workspace_id!r} doc_id={document_id!r} has_ticket={str(bool(ticket_id))}")
+        room_key = f"{workspace_id}/{document_id}"
+
+        print(
+            f"[crdt] PARSED path_type={path_type} ws_id={workspace_id!r} "
+            f"doc_id={document_id!r} room_key={room_key!r} "
+            f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
+            flush=True,
+        )
 
         # ── Validate ticket ──────────────────────────────────────────────────
-        ticket_store = get_ticket_store()
         try:
             if not ticket_id:
-                _log("WARNING", f"[DENIED] missing_ticket ws_id={workspace_id!r} doc_id={document_id!r}")
+                print(
+                    f"[crdt] DENIED reason=missing_ticket marker={CRDT_DEBUG_MARKER} "
+                    f"pid={_crdt_pid} ws_id={workspace_id!r} doc_id={document_id!r}",
+                    flush=True,
+                )
                 return True  # reject: no ticket
 
             await validate_collaboration_ticket(
@@ -144,12 +176,16 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
                 ticket_store=ticket_store,
             )
             # Pre-create room using the clean room key format
-            room_key = f"{workspace_id}/{document_id}"
             channel_id = id(msg)
             manager.track_channel(channel_id, room_key)
             await manager._ensure_room_for_path(room_key, workspace_id, document_id)
 
-            _log("INFO", f"[ALLOWED] ws_connected ws_id={workspace_id!r} doc_id={document_id!r}")
+            print(
+                f"[crdt] ALLOWED room_key={room_key!r} "
+                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid} "
+                f"store_id={id(ticket_store)}",
+                flush=True,
+            )
             return False  # accept
 
         except TicketInvalid as e:
@@ -165,7 +201,12 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
             else:
                 denial_type = "ticket_rejected"
 
-            _log("WARNING", f"[DENIED] {denial_type} ws_id={workspace_id!r} doc_id={document_id!r} ticket={_mask_ticket(ticket_id)}")
+            print(
+                f"[crdt] DENIED reason={denial_type} marker={CRDT_DEBUG_MARKER} "
+                f"pid={_crdt_pid} ws_id={workspace_id!r} doc_id={document_id!r} "
+                f"ticket={_mask_ticket(ticket_id)}",
+                flush=True,
+            )
             return True  # reject
 
     async def on_disconnect(msg: dict) -> None:
