@@ -9,6 +9,7 @@ import httpx
 from app.adapters.in_memory_ticket_store import InMemoryTicketStore
 from app.ports.ticket_store import TicketStore
 from app.domain.collab_ticket import CollabTicket
+from app.domain.errors import PermissionDenied, UpstreamUnavailable
 
 
 async def issue_collaboration_ticket(
@@ -75,13 +76,3 @@ async def issue_collaboration_ticket(
         "ws_path": f"/collab/crdt/{workspace_id}/{document_id}?ticket={ticket_id}",
         "role": role,
     }
-
-
-class PermissionDenied(Exception):
-    """User does not have access to the workspace."""
-    pass
-
-
-class UpstreamUnavailable(Exception):
-    """Workspace service unavailable or timed out."""
-    pass
