@@ -289,6 +289,130 @@ SYNC PASS
 
 **Próximo paso:** PM-10B — Mobile Today Dashboard REST discovery / Mobile Cloud Sync + Widgets.
 
+### PM-10B.1a — Backend Date Filters for Mobile Today Dashboard (PASS)
+**Alcance:** planning-service + schedule-service — filtros opcionales `date` por YYYY-MM-DD
+**Resultado:** PASS
+
+**Commits registrados:**
+- `8a053ec` feat(mobile): add date filters for planning and schedule APIs
+- Hotfix: fix(api): return 400 for invalid date filters
+
+**Implementación:**
+
+| Servicio | Endpoint | Query param |
+|---|---|---|
+| planning-service | `GET /api/planning/workspaces/{workspace_id}/tasks` | `?date=YYYY-MM-DD` (opcional) |
+| schedule-service | `GET /api/schedule/workspaces/{workspace_id}/schedule-blocks` | `?date=YYYY-MM-DD` (opcional) |
+
+**Contrato:**
+- `date` omitido → devuelve todos los registros (backward compatible)
+- `date=YYYY-MM-DD` → filtra por fecha correspondiente
+- `date=invalid` → `400 Bad Request`, body `{"detail":"Invalid date format. Expected YYYY-MM-DD"}`
+- `date=2026-13-45` → `400 Bad Request` ( ValueError de `fromisoformat` capturado)
+
+**planning-service cambios:**
+- `app/use_cases/task_use_cases.py`: `list_tasks(..., due_date)` — filtro `due_date.date() == filter_date`
+- `app/api/routes.py`: query param `date`, validación `try/except ValueError` → 400
+
+**schedule-service cambios:**
+- `app/use_cases/schedule_use_cases.py`: `list_schedule_blocks_for_date(date)` — convierte YYYY-MM-DD → `day_of_week` via `.weekday()`
+- `app/use_cases/__init__.py`: export `list_schedule_blocks_for_date`
+- `app/api/routes.py`: query param `date`, validación `try/except ValueError` → 400
+
+**Validación producción (workspace `c0515994-a7d9-476d-b781-0339f934ca8a`):**
+
+| Endpoint | Status | Body |
+|---|---|---|
+| `GET /tasks?date=2026-05-04` | 200 | `{"tasks":[]}` |
+| `GET /tasks` (sin date) | 200 | `{"tasks":[]}` |
+| `GET /tasks?date=bad-date` | 400 | `{"detail":"Invalid date format. Expected YYYY-MM-DD"}` |
+| `GET /schedule-blocks?date=2026-05-04` | 200 | `{"blocks":[]}` |
+| `GET /schedule-blocks` (sin date) | 200 | `{"blocks":[]}` |
+| `GET /schedule-blocks?date=bad-date` | 400 | `{"detail":"Invalid date format. Expected YYYY-MM-DD"}` |
+
+**Criterios cumplidos:**
+- Fecha válida → 200, backward compatible
+- Fecha omitida → 200, todos los registros
+- Fecha inválida → 400, sin stacktrace
+- Auth Bearer JWT intacto en ambos endpoints
+- Membership validation via workspace-service intacta
+- No se exponen datos de otros workspaces
+
+**Deuda PM-10B.1a / restante:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | Schedule usa `day_of_week` derivado de fecha UTC — si mobile está en zona horaria diferente, puede mostrar blocks del día anterior/siguiente. Aceptable para MVP; día local como mejora futura. |
+| 🟡 MEDIO | No existe endpoint `?state=pending` para filtrar tasks por estado. Mobile filtra client-side o Posterizado. No bloquea MVP. |
+| 🔵 BAJO | No hay index en `due_date` para filtering eficiente. Aceptable para MVP (datasets pequeños). |
+| 🔵 BAJO | Mobile React Query / API wiring queda para PM-10B.1b. |
+
+**Nginx upstream temporal (observado durante deploy):**
+
+| Observación | Detalle |
+|---|---|
+| Síntoma | `/api/planning/*` y `/api/schedule/*` devolvían 502 tras restart de servicios |
+| `/planning/health` y `/schedule/health` | 200 (ruta directa, sin upstream) |
+| `/api/planning/health` y `/api/schedule/health` | 502 (upstream no disponible) |
+| Mitigación | `docker compose -f docker-compose.ec2.yml restart nginx` resolvió |
+| Root cause probable | Nginx upstream guardando IP antigua tras restart de contenedores |
+| Deuda futura | Configurar `resolver 127.0.0.11 valid=10s;` + variable upstream para re-resolución dinámica |
+
+**Próximo paso:** PM-10B.1c — Migrar useTodaySummary a hooks REST con date filter.
+
+### PM-10B.1b — Mobile React Query Foundation (PASS)
+**Alcance:** apps/mobile — React Query v5 + fetchWithAuth + hooks REST para Today Dashboard
+**Resultado:** PASS
+
+**Commits registrados:**
+- `55f55ff` feat(mobile): add React Query API foundation
+- `6163443` fix(mobile): align React Query focus and hook signatures
+
+**Implementación:**
+
+| Archivo | Cambio |
+|---|---|
+| `apps/mobile/package.json` | `@tanstack/react-query` agregado |
+| `apps/mobile/src/lib/queryClient.ts` | QueryClient singleton, staleTime 5min, gcTime 30min, retry 2, `focusManager.setEventListener` para AppState |
+| `apps/mobile/src/api/fetchWithAuth.ts` | Fetch wrapper con `supabase.auth.getSession()` por request, Bearer inject, 401/403 throw |
+| `apps/mobile/src/hooks/useWorkspaces.ts` | useQuery `['workspaces']`, `fetchWorkspacesWithAuth` |
+| `apps/mobile/src/hooks/useTasks.ts` | useQuery `['tasks', wsId, date]`, `fetchTasksWithDate`, enabled !!wsId |
+| `apps/mobile/src/hooks/useSchedule.ts` | useQuery `['schedule', wsId, date]`, `fetchScheduleBlocksWithDate`, enabled !!wsId |
+| `apps/mobile/src/services/planningClient.ts` | Export `fetchTasksWithDate(wsId, date?)` con fetchWithAuth |
+| `apps/mobile/src/services/scheduleClient.ts` | Export `fetchScheduleBlocksWithDate(wsId, date?)` con fetchWithAuth |
+| `apps/mobile/src/services/workspaceClient.ts` | Export `fetchWorkspacesWithAuth()` con fetchWithAuth |
+| `apps/mobile/app/_layout.tsx` | `QueryClientProvider` envuelve `AuthProvider` |
+| `apps/mobile/src/services/AuthContext.tsx` | `queryClient.clear()` en `signOut()` |
+
+**Hotfix post-commit:**
+- Reemplazado `queryClient.invalidateQueries()` global por `focusManager.setEventListener` oficial
+- Eliminados parámetros `getAccessToken` no usados de `useTasks` y `useSchedule`
+
+**Criterios cumplidos:**
+- `@tanstack/react-query` instalado sin romper expo-doctor preexistente
+- `QueryClientProvider` montado antes de `SafeAreaProvider`
+- `fetchWithAuth` obtiene token fresco via `getSession()` por cada request
+- `useWorkspaces/useTasks/useSchedule` con query keys correctas
+- Hooks no reciben `getAccessToken` (auth via fetchWithAuth)
+- `queryClient.clear()` llamado en logout
+- `focusManager` usa `handleFocus(true)` patrón oficial, no `invalidateQueries()` global
+- tsc `--noEmit`: **0 errors**
+- `today.tsx` no modificado
+- `useTodaySummary` no modificado
+- `@tuxnotas/shared` no modificado
+
+**Deuda PM-10B.1b / restante:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | PM-10B.1c: migrar `useTodaySummary` para usar `useWorkspaces/useTasks/useSchedule` con `date` filter UTC |
+| 🟡 MEDIO | PM-10B.2: migrar factories legacy `createWorkspaceClient`/`createScheduleClient`/`createPlanningClient` para usar `fetchWithAuth` internamente si se requiere |
+| 🟡 MEDIO | PM-10B.2: `queryClient.clear()` debería llamarse en `finally` de `signOut` para asegurar limpieza incluso si `auth.signOut()` lanza |
+| 🔵 BAJO | PM-10B.3: AsyncStorage/persistQueryClient para cache offline de widgets Android |
+| 🔵 BAJO | Deuda preexistente expo-doctor: Metro config overrides, duplicate React versions, react-native-webrtc untested, 4 patch version mismatches |
+
+**Próximo paso:** PM-10B.1c — Today Dashboard consume hooks nuevos con date filter.
+
 ### PM-08B Deuda y caveats
 
 ALTO:
