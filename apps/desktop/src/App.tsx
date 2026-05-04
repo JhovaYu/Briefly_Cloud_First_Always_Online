@@ -294,6 +294,8 @@ function App() {
     return <ProfileSetup onComplete={handleProfileComplete} />;
   }
 
+  const COLLAB_USE_CLOUD = import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
+
   if (screen.type === 'dashboard') {
     return (
       <HomeDashboard
@@ -303,6 +305,8 @@ function App() {
         onLogout={handleLogout}
         onOpenCalendar={() => setScreen({ type: 'calendar' })}
         onNavigate={handleNavigate}
+        workspaceService={workspaceSvc}
+        cloudProviderEnabled={COLLAB_USE_CLOUD}
       />
     );
   }

@@ -9,6 +9,7 @@ import {
   type UserProfile, type PoolInfo,
   getSavedPools, addPool, removePool, updatePoolLastOpened
 } from '../../core/domain/UserProfile';
+import type { WorkspaceService } from '@tuxnotas/shared';
 import { useSettings, SettingsModal } from '../components/SettingsModal';
 import { NotificationsModal } from '../components/NotificationsModal';
 import { Sidebar } from '../components/Sidebar';
@@ -126,13 +127,15 @@ function PoolCard({ pool, onOpen, onDelete }: PoolCardProps) {
 }
 
 // ── Componente principal ──────────────────────────────────────────────────
-export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalendar, onNavigate }: {
+export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalendar, onNavigate, workspaceService, cloudProviderEnabled }: {
   user: UserProfile;
   yjsDoc: Y.Doc;
   onOpenPool: (poolId: string, name: string, signalingUrl?: string) => void;
   onLogout: () => void;
   onOpenCalendar: () => void;
   onNavigate: (route: string) => void;
+  workspaceService?: WorkspaceService;
+  cloudProviderEnabled?: boolean;
 }) {
   const [pools, setPools] = useState<PoolInfo[]>(getSavedPools());
   const [joinId, setJoinId] = useState('');
@@ -144,6 +147,7 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
   const settings = useSettings();
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
   const [nextEvents, setNextEvents] = useState<any[]>([]);
@@ -194,8 +198,72 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
     }
   }, []);
 
-  // ── Handlers (lógica sin cambios) ────────────────────────────────────────
+  // PM-08D: Hydrate cloud workspaces from backend into local pool list
+  useEffect(() => {
+    if (!cloudProviderEnabled || !workspaceService) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const workspaces = await workspaceService.listWorkspaces();
+        if (cancelled) return;
+
+        let added = 0;
+        for (const ws of workspaces) {
+          addPool({
+            id: ws.id,
+            name: ws.name || 'My Workspace',
+            icon: 'collab',
+            lastOpened: Date.now(),
+            createdAt: Date.now(),
+            signalingUrl: undefined,
+          });
+          added++;
+        }
+
+        if (!cancelled && added > 0) {
+          setPools(getSavedPools());
+          console.info('[HomeDashboard] Hydrated cloud workspaces', { count: added });
+        }
+      } catch (err) {
+        console.error('[HomeDashboard] Failed to hydrate cloud workspaces:', err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [cloudProviderEnabled, workspaceService]);
+
+  // PM-08D: Cloud-first workspace creation
   const handleCreate = async () => {
+    setCreateError(null);
+    const name = newPoolName.trim() || 'Mi espacio';
+
+    // Cloud path: call workspace-service to create a real cloud workspace
+    if (cloudProviderEnabled && workspaceService) {
+      try {
+        const ws = await workspaceService.createWorkspace(name);
+        addPool({
+          id: ws.id,
+          name: ws.name || name,
+          icon: 'collab',
+          lastOpened: Date.now(),
+          createdAt: Date.now(),
+          signalingUrl: undefined,
+        });
+        setPools(getSavedPools());
+        setCreating(false);
+        setNewPoolName('');
+        onOpenPool(ws.id, ws.name || name, undefined);
+        return;
+      } catch (err) {
+        console.error('[HomeDashboard] createWorkspace failed');
+        setCreateError('No se pudo crear el workspace en la nube. Verifica tu conexión e intenta de nuevo.');
+        return;
+      }
+    }
+
+    // P2P legacy path: local pool with signaling
     let signalingIp = 'localhost';
     try {
       if (window.electronAPI) {
@@ -205,7 +273,6 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
       console.error('Error starting signaling:', e);
     }
 
-    const name = newPoolName.trim() || 'Mi espacio';
     const poolId = `pool-${Math.random().toString(36).substr(2, 9)}`;
     const signalingUrl = `ws://${signalingIp}:4444`;
 
@@ -354,6 +421,17 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
                       ✕
                     </button>
                   </div>
+                </div>
+              )}
+
+              {createError && (
+                <div role="alert" style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--color-error)',
+                  borderRadius: 8, padding: '8px 12px',
+                  fontSize: 12, color: 'var(--color-error)',
+                }}>
+                  {createError}
                 </div>
               )}
 
