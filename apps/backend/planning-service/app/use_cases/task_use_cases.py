@@ -42,8 +42,17 @@ async def create_task(
 async def list_tasks(
     workspace_id: str,
     task_repo: TaskRepository,
+    due_date: str | None = None,
 ) -> list[Task]:
-    return await task_repo.find_by_workspace(workspace_id)
+    tasks = await task_repo.find_by_workspace(workspace_id)
+    if due_date:
+        from datetime import date as date_class
+        filter_date = date_class.fromisoformat(due_date)
+        tasks = [
+            t for t in tasks
+            if t.due_date and t.due_date.date() == filter_date
+        ]
+    return tasks
 
 
 async def update_task(

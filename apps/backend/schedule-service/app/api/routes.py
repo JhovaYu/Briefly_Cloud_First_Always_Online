@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 
 from app.api.schemas import (
     CreateScheduleBlockRequest,
@@ -8,10 +8,10 @@ from app.api.schemas import (
     ScheduleBlockListResponse,
 )
 from app.api.dependencies import get_current_user, get_db, require_workspace_access, AuthenticatedUser, get_workspace_client, ScheduleDBSession
-from app.ports.schedule_block_repository import ScheduleBlockRepository
 from app.ports.workspace_permissions import WorkspacePermissions
-from app.domain.schedule_block import ScheduleBlock
+from app.ports.schedule_block_repository import ScheduleBlockRepository
 from app.domain.errors import ScheduleBlockNotFound, DuplicateResourceError
+from app.use_cases import list_schedule_blocks_for_date
 
 router = APIRouter()
 
@@ -19,12 +19,16 @@ router = APIRouter()
 @router.get("/workspaces/{workspace_id}/schedule-blocks", response_model=ScheduleBlockListResponse)
 async def get_schedule_blocks(
     workspace_id: str,
+    date: str | None = Query(None, description="YYYY-MM-DD. Defaults to all blocks if omitted."),
     auth_user: AuthenticatedUser = Depends(get_current_user),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
     db: ScheduleDBSession = Depends(get_db),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
-    blocks = await db.block_repo.list_by_workspace(workspace_id)
+    if date:
+        from datetime import date as date_class
+        date_class.fromisoformat(date)  # validate, raise 422 on bad format
+    blocks = await list_schedule_blocks_for_date(workspace_id, db.block_repo, date=date)
     return ScheduleBlockListResponse(
         blocks=[
             ScheduleBlockResponse(

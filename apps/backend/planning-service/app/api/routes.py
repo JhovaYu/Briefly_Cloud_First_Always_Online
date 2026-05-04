@@ -78,12 +78,16 @@ async def create_task_list_endpoint(
 @router.get("/workspaces/{workspace_id}/tasks", response_model=TasksListResponse)
 async def get_tasks(
     workspace_id: str,
+    date: str | None = None,
     auth_user=Depends(get_current_user),
     db: DBSession = Depends(get_db),
     workspace_client: WorkspacePermissions = Depends(get_workspace_client),
 ):
     await require_workspace_access(workspace_id, auth_user, workspace_client)
-    tasks = await list_tasks(workspace_id, db.task_repo)
+    if date:
+        from datetime import date as date_class
+        date_class.fromisoformat(date)  # validate YYYY-MM-DD, raise 422 on bad format
+    tasks = await list_tasks(workspace_id, db.task_repo, due_date=date)
     return TasksListResponse(
         tasks=[
             TaskResponse(
