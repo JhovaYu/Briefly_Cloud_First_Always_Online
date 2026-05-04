@@ -86,7 +86,13 @@ async def get_tasks(
     await require_workspace_access(workspace_id, auth_user, workspace_client)
     if date:
         from datetime import date as date_class
-        date_class.fromisoformat(date)  # validate YYYY-MM-DD, raise 422 on bad format
+        try:
+            date_class.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Expected YYYY-MM-DD",
+            )
     tasks = await list_tasks(workspace_id, db.task_repo, due_date=date)
     return TasksListResponse(
         tasks=[

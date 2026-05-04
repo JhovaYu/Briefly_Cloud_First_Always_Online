@@ -27,7 +27,13 @@ async def get_schedule_blocks(
     await require_workspace_access(workspace_id, auth_user, workspace_client)
     if date:
         from datetime import date as date_class
-        date_class.fromisoformat(date)  # validate, raise 422 on bad format
+        try:
+            date_class.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Expected YYYY-MM-DD",
+            )
     blocks = await list_schedule_blocks_for_date(workspace_id, db.block_repo, date=date)
     return ScheduleBlockListResponse(
         blocks=[
