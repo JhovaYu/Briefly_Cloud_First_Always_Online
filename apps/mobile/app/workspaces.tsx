@@ -2,17 +2,21 @@ import React, { useState, useCallback } from 'react';
 import {
     View,
     Text,
+    TextInput,
     TouchableOpacity,
     StyleSheet,
     FlatList,
     ActivityIndicator,
     RefreshControl,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
-import { createWorkspaceClient } from '../src/services/workspaceClient';
 import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
+import { queryClient } from '../src/lib/queryClient';
+import { joinWorkspaceWithAuth, createWorkspaceWithAuth } from '../src/services/workspaceClient';
 import type { Workspace } from '@tuxnotas/shared/src/domain/Entities';
 
 function formatDate(isoString: string): string {
@@ -33,6 +37,12 @@ export default function WorkspacesScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const { activeWorkspaceId, setActiveWorkspace } = useActiveWorkspace();
 
+    // ── Join/Create section state ───────────────────────────────────────────
+    const [joinCode, setJoinCode] = useState('');
+    const [createName, setCreateName] = useState('');
+    const [actionLoading, setActionLoading] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
+
     const loadWorkspaces = useCallback(async () => {
         const token = getAccessToken();
         if (!token) return;
@@ -40,8 +50,8 @@ export default function WorkspacesScreen() {
         setLoading(true);
         setError(null);
         try {
-            const client = createWorkspaceClient(getAccessToken);
-            const fetched = await client.listWorkspaces();
+            const { fetchWorkspacesWithAuth } = await import('../src/services/workspaceClient');
+            const fetched = await fetchWorkspacesWithAuth();
             setWorkspaces(fetched);
         } catch (err: any) {
             setError(err?.message ?? 'Error cargando workspaces');
@@ -74,6 +84,53 @@ export default function WorkspacesScreen() {
 
     const handleUseAsActive = (workspace: Workspace) => {
         setActiveWorkspace(workspace.id);
+    };
+
+    // ── Join/Create handlers ───────────────────────────────────────────────
+
+    const handleJoinWorkspace = async () => {
+        const code = joinCode.trim();
+        if (!code) return;
+
+        setActionLoading(true);
+        setActionError(null);
+        try {
+            const result = await joinWorkspaceWithAuth(code);
+            await setActiveWorkspace(result.workspace.id);
+            await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+            setJoinCode('');
+            await loadWorkspaces();
+        } catch (err: any) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('404')) {
+                setActionError('Workspace no encontrado');
+            } else if (msg.includes('401') || msg.includes('403')) {
+                setActionError('Sesión no válida');
+            } else {
+                setActionError('Error al unirse al workspace');
+            }
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleCreateWorkspace = async () => {
+        const name = createName.trim();
+        if (!name) return;
+
+        setActionLoading(true);
+        setActionError(null);
+        try {
+            const ws = await createWorkspaceWithAuth(name);
+            await setActiveWorkspace(ws.id);
+            await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+            setCreateName('');
+            await loadWorkspaces();
+        } catch (err: any) {
+            setActionError(err?.message ?? 'Error al crear workspace');
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     const renderItem = ({ item }: { item: Workspace }) => {
@@ -124,7 +181,10 @@ export default function WorkspacesScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                     <Text style={styles.backBtnText}>←</Text>
@@ -142,6 +202,65 @@ export default function WorkspacesScreen() {
                 </View>
             )}
 
+            {/* ── Join/Create Section ─────────────────────────────────────── */}
+            <View style={styles.joinSection}>
+                <View style={styles.joinRow}>
+                    <TextInput
+                        style={styles.joinInput}
+                        placeholder="Código UUID del workspace"
+                        placeholderTextColor="#555"
+                        value={joinCode}
+                        onChangeText={setJoinCode}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        editable={!actionLoading}
+                    />
+                    <TouchableOpacity
+                        style={[styles.joinBtn, (!joinCode.trim() || actionLoading) && styles.joinBtnDisabled]}
+                        onPress={handleJoinWorkspace}
+                        disabled={!joinCode.trim() || actionLoading}
+                    >
+                        {actionLoading ? (
+                            <ActivityIndicator color="#aeb4ff" size="small" />
+                        ) : (
+                            <Text style={styles.joinBtnText}>Unirse</Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>o</Text>
+                    <View style={styles.dividerLine} />
+                </View>
+
+                <View style={styles.joinRow}>
+                    <TextInput
+                        style={styles.createInput}
+                        placeholder="Nombre del nuevo workspace"
+                        placeholderTextColor="#555"
+                        value={createName}
+                        onChangeText={setCreateName}
+                        editable={!actionLoading}
+                    />
+                    <TouchableOpacity
+                        style={[styles.createBtn, (!createName.trim() || actionLoading) && styles.createBtnDisabled]}
+                        onPress={handleCreateWorkspace}
+                        disabled={!createName.trim() || actionLoading}
+                    >
+                        {actionLoading ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                            <Text style={styles.createBtnText}>Crear</Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                {actionError && (
+                    <Text style={styles.actionError}>{actionError}</Text>
+                )}
+            </View>
+
             {loading && workspaces.length === 0 ? (
                 <View style={styles.centered}>
                     <ActivityIndicator color="#aeb4ff" size="large" />
@@ -149,7 +268,7 @@ export default function WorkspacesScreen() {
             ) : workspaces.length === 0 && !error ? (
                 <View style={styles.empty}>
                     <Text style={styles.emptyText}>Sin workspaces</Text>
-                    <Text style={styles.emptySubtext}>Crea uno desde la app web para verlo aquí</Text>
+                    <Text style={styles.emptySubtext}>Crea uno o únete a un workspace</Text>
                 </View>
             ) : (
                 <FlatList
@@ -167,7 +286,7 @@ export default function WorkspacesScreen() {
                     }
                 />
             )}
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -200,6 +319,61 @@ const styles = StyleSheet.create({
     },
     errorText: { color: '#ef4444', fontSize: 13, flex: 1 },
     errorClose: { color: '#ef4444', marginLeft: 8 },
+    // Join/Create section
+    joinSection: {
+        marginHorizontal: 16,
+        marginBottom: 16,
+        backgroundColor: '#1a1a1a',
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#252525',
+    },
+    joinRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+    joinInput: {
+        flex: 1,
+        backgroundColor: '#111',
+        color: '#ccc',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 14,
+        borderWidth: 1,
+        borderColor: '#333',
+    },
+    joinBtn: {
+        backgroundColor: '#252540',
+        borderRadius: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: '#3a3a6a',
+    },
+    joinBtnDisabled: { opacity: 0.5 },
+    joinBtnText: { color: '#aeb4ff', fontSize: 14, fontWeight: '600' },
+    createInput: {
+        flex: 1,
+        backgroundColor: '#111',
+        color: '#ccc',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 14,
+        borderWidth: 1,
+        borderColor: '#333',
+    },
+    createBtn: {
+        backgroundColor: '#6872c6',
+        borderRadius: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+    },
+    createBtnDisabled: { opacity: 0.5 },
+    createBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+    dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 10 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
+    dividerText: { color: '#555', fontSize: 12 },
+    actionError: { color: '#ef4444', fontSize: 12, marginTop: 8, textAlign: 'center' },
     list: { paddingHorizontal: 16, paddingBottom: 32 },
     workspaceItem: {
         flexDirection: 'row',

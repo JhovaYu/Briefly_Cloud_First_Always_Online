@@ -158,3 +158,35 @@ export async function fetchWorkspacesWithAuth(): Promise<Workspace[]> {
     const json = await response.json() as { workspaces: Workspace[] };
     return json.workspaces ?? [];
 }
+
+/**
+ * Joins a workspace by UUID. Idempotent: returns workspace even if already a member.
+ * @throws Error if workspace not found (404) or unauthorized (401/403)
+ */
+export async function joinWorkspaceWithAuth(workspaceId: string): Promise<{
+    workspace: Workspace;
+    already_member: boolean;
+}> {
+    const response = await fetchWithAuth(
+        `${BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/join`,
+        { method: 'POST' },
+    );
+    if (!response.ok) {
+        throw new Error(`Failed to join workspace: ${response.status}`);
+    }
+    return response.json() as Promise<{ workspace: Workspace; already_member: boolean }>;
+}
+
+/**
+ * Creates a new workspace using a fresh token per request via fetchWithAuth.
+ */
+export async function createWorkspaceWithAuth(name: string): Promise<Workspace> {
+    const response = await fetchWithAuth(`${BASE_URL}/workspaces`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to create workspace: ${response.status}`);
+    }
+    return response.json() as Promise<Workspace>;
+}
