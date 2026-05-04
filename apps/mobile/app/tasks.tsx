@@ -51,7 +51,7 @@ export default function TasksScreen() {
     const router = useRouter();
     const { workspaceId: workspaceIdParam } = useLocalSearchParams<{ workspaceId?: string }>();
     const { loading: authLoading, getAccessToken } = useAuth();
-    const { activeWorkspaceId } = useActiveWorkspace();
+    const { activeWorkspaceId, activeWorkspaceName: workspaceName } = useActiveWorkspace();
     const [tasks, setTasks] = useState<PlanningTask[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function TasksScreen() {
         } finally {
             setLoading(false);
         }
-    }, [getAccessToken, workspaceIdParam]);
+    }, [getAccessToken, workspaceIdParam, activeWorkspaceId]);
 
     useEffect(() => {
         if (authLoading) return;
@@ -219,7 +219,7 @@ export default function TasksScreen() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                     <Text style={styles.backBtnText}>←</Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Tareas</Text>
+                <Text style={styles.title}>Tareas{workspaceName ? ` · ${workspaceName}` : ''}</Text>
                 <TouchableOpacity onPress={loadTasks} style={styles.refreshBtn} disabled={loading}>
                     {loading ? (
                         <ActivityIndicator color="#aeb4ff" size="small" />

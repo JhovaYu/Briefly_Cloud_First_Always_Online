@@ -77,7 +77,7 @@ class PostgresScheduleBlockRepository(ScheduleBlockRepository):
             notes=block.notes,
             created_at=block.created_at,
             updated_at=block.updated_at,
-            created_by=uuid.UUID(block.created_by),
+            created_by=block.created_by,
         )
         self._session.add(model)
         await self._session.flush()
