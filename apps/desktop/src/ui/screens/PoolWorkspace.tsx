@@ -104,15 +104,25 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
   // ─── Initialize services + REAL-TIME SYNC ───
   const COLLAB_USE_CLOUD = import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
 
+  // PM-08C.3: UUID-like detection — only real workspace UUIDs from backend qualify as cloud.
+  // All arbitrary IDs (b_post_fix, join codes, legacy pool-*) fall through to P2P.
+  const isUuidLike = (id: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
   useEffect(() => {
-    // PM-08C.2: Explicit P2P vs cloud routing.
-    // Cloud workspace: UUID (not starting with 'pool-') + no signalingUrl.
-    // Local P2P pool: id starts with 'pool-' OR has signalingUrl.
+    // Cloud workspace: must be UUID-like + no signalingUrl + token available.
+    // P2P pool: any non-UUID, or has signalingUrl, or no token.
     const isCloudPool =
       !!cloudWorkspaceId &&
-      !cloudWorkspaceId.startsWith('pool-') &&
+      isUuidLike(cloudWorkspaceId) &&
       !signalingUrl &&
       !!getAccessToken;
+
+    // For P2P local pools, always provide a signalingUrl so AppServices never
+    // receives undefined when COLLAB_USE_CLOUD=true (no fail-fast trigger).
+    const effectiveSignalingUrl = isCloudPool
+      ? undefined
+      : signalingUrl ?? 'ws://localhost:4444';
 
     const cloudContext = isCloudPool
       ? {
@@ -127,6 +137,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
       console.info('[PoolWorkspace] local pool detected, using P2P adapter', {
         poolId: cloudWorkspaceId,
         hasSignalingUrl: Boolean(signalingUrl),
+        usedFallbackSignalingUrl: !signalingUrl,
       });
     }
 
@@ -143,7 +154,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
     let currentSvc: AppServices | null = null;
 
     (async () => {
-      const svc = await AppServices.getOrCreate(poolId, signalingUrl, cloudContext);
+      const svc = await AppServices.getOrCreate(poolId, effectiveSignalingUrl, cloudContext);
       if (cancelled) { AppServices.release(poolId, cloudContext); return; }
       currentSvc = svc;
       setServices(svc);
