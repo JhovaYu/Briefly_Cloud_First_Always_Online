@@ -19,8 +19,8 @@ import type { WorkspaceService } from '@tuxnotas/shared';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
 import { exportNoteAs, exportAllPoolAsZip, exportNoteToService } from '../utils/exportHelpers';
 
-export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService, cloudWorkspaceId }: {
-  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string; workspaceService?: WorkspaceService; cloudWorkspaceId?: string | null;
+export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService, cloudWorkspaceId, getAccessToken }: {
+  poolId: string; poolName: string; user: UserProfile; onBack: () => void; signalingUrl?: string; workspaceService?: WorkspaceService; cloudWorkspaceId?: string | null; getAccessToken?: () => Promise<string | null>;
 }) {
   const [services, setServices] = useState<AppServices | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -102,15 +102,37 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
 
   // ─── Initialize services + REAL-TIME SYNC ───
+  const COLLAB_USE_CLOUD = import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
+
   useEffect(() => {
+    // PM-08A: Gate on cloudWorkspaceId + getAccessToken only.
+    // NOTE: activeNoteId is NOT in this guard — it is resolved AFTER
+    // AppServices is created (from the Y.Doc notes map). Adding it here
+    // would create a bootstrap deadlock.
+    const cloudContext = (cloudWorkspaceId && getAccessToken)
+      ? {
+          workspaceId: cloudWorkspaceId,
+          documentId: cloudWorkspaceId,
+          getAccessToken,
+          user: { name: user.name, color: user.color },
+        }
+      : undefined;
+
+    if (COLLAB_USE_CLOUD && !cloudContext) {
+      console.log('[PoolWorkspace] cloud bootstrap waiting:', {
+        hasWorkspaceId: !!cloudWorkspaceId,
+        hasGetAccessToken: !!getAccessToken,
+      });
+      return;
+    }
+
     let cancelled = false;
     let updateHandler: (() => void) | null = null;
     let currentSvc: AppServices | null = null;
 
     (async () => {
-      // ★ Use singleton cache — prevents "Yjs Doc already exists!" on StrictMode double-invoke
-      const svc = await AppServices.getOrCreate(poolId, signalingUrl);
-      if (cancelled) { AppServices.release(poolId); return; }
+      const svc = await AppServices.getOrCreate(poolId, signalingUrl, cloudContext);
+      if (cancelled) { AppServices.release(poolId, cloudContext); return; }
       currentSvc = svc;
       setServices(svc);
 
@@ -160,9 +182,9 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
       if (currentSvc && updateHandler) {
         currentSvc.doc.off('update', updateHandler);
       }
-      AppServices.release(poolId);
+      AppServices.release(poolId, cloudContext);
     };
-  }, [poolId]);
+  }, [poolId, cloudWorkspaceId, activeNoteId]);
 
   // Logic for Tasks
   const [taskLists, setTaskLists] = useState<TaskList[]>([]);

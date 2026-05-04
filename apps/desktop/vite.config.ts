@@ -68,6 +68,13 @@ export default defineConfig(({ mode }) => {
           rewrite: (p: string) =>
             useCloudProxy ? p : p.replace(/^\/api\/schedule/, ''),
         },
+        // PM-08A/B cloud collaboration: proxy CRDT ticket + WebSocket
+        '/collab': {
+          target: devProxyTarget || 'http://localhost:8002',
+          changeOrigin: true,
+          secure: !useCloudProxy,  // false only for local dev proxy to HTTP backend
+          ws: true,  // Enable WebSocket upgrade
+        },
       },
     },
   }

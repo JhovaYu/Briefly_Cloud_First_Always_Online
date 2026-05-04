@@ -1,8 +1,12 @@
 import * as Y from 'yjs';
 import { YjsWebRTCAdapter } from './network/YjsWebRTCAdapter';
+import { CloudYjsProvider } from './network/CloudYjsProvider';
 import { YjsIndexedDBAdapter } from './persistence/IndexedDBAdapter';
 import type { CollaborationService } from '../core/ports/Ports';
 import type { Note, Pool, Notebook } from '@tuxnotas/shared';
+
+const COLLAB_USE_CLOUD_PROVIDER =
+    import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
 
 let noteCounter = 0;
 
@@ -15,11 +19,33 @@ const instanceCache = new Map<string, { svc: AppServices; refCount: number }>();
 
 import { TaskService } from '@tuxnotas/shared';
 
+export interface CloudContext {
+    workspaceId: string;
+    documentId: string;
+    getAccessToken: () => Promise<string | null>;
+    user: { name: string; color: string };
+}
+
+/**
+ * Build a cache key that separates P2P and cloud instances.
+ * Prevents a P2P-cached instance from being reused when cloud flag is ON
+ * (and vice-versa) for the same logical workspace.
+ */
+function buildCacheKey(poolId: string, cloudContext?: CloudContext): string {
+    if (cloudContext) {
+        return `cloud:${cloudContext.workspaceId}:${cloudContext.documentId}`;
+    }
+    return `p2p:${poolId}`;
+}
+
 export class AppServices implements CollaborationService {
     public doc: Y.Doc;
     public network: YjsWebRTCAdapter;
     public persistence: YjsIndexedDBAdapter;
     public tasks: TaskService;
+    public cloudProvider: CloudYjsProvider | null = null;
+    /** Whether this instance was initialized in cloud mode. */
+    private isCloudMode = false;
 
     constructor() {
         this.doc = new Y.Doc();
@@ -28,41 +54,74 @@ export class AppServices implements CollaborationService {
         this.tasks = new TaskService(this.doc);
     }
 
-    async initialize(poolId: string = 'fluent-default-pool', signalingUrl?: string): Promise<void> {
-        await this.persistence.initialize(poolId);
-        await this.network.connect(poolId, signalingUrl);
+    async initialize(poolId: string = 'fluent-default-pool', signalingUrl?: string, cloudContext?: CloudContext): Promise<void> {
+        this.isCloudMode = !!(COLLAB_USE_CLOUD_PROVIDER && cloudContext);
+
+        if (COLLAB_USE_CLOUD_PROVIDER && !cloudContext) {
+            throw new Error(
+                '[AppServices] COLLAB_USE_CLOUD_PROVIDER=true but cloudContext missing. ' +
+                'Aborting to prevent silent P2P fallback.',
+            );
+        }
+
+        if (this.isCloudMode && cloudContext) {
+            console.log('[AppServices] COLLAB_USE_CLOUD_PROVIDER=true, cloudContext present, using CloudYjsProvider');
+            // PM-08A: skip IndexedDB in cloud mode — local cache can contaminate cloud state
+            this.cloudProvider = new CloudYjsProvider(this.doc, {
+                getAccessToken: cloudContext.getAccessToken,
+                workspaceId: cloudContext.workspaceId,
+                documentId: cloudContext.documentId,
+                user: cloudContext.user,
+            });
+            await this.cloudProvider.connect();
+        } else {
+            console.log('[AppServices] Using YjsWebRTCAdapter (P2P)', {
+                cloudFlag: COLLAB_USE_CLOUD_PROVIDER,
+                hasCloudContext: !!cloudContext,
+            });
+            await this.persistence.initialize(poolId);
+            await this.network.connect(poolId, signalingUrl);
+        }
     }
 
     /**
-     * Get or create a singleton AppServices for a given poolId.
-     * Keeps a reference count so React StrictMode double-mounting is safe.
+     * Get or create a singleton AppServices.
+     * Uses separate cache keys for P2P vs cloud mode so instances are never mixed.
      */
-    static async getOrCreate(poolId: string, signalingUrl?: string): Promise<AppServices> {
-        const existing = instanceCache.get(poolId);
+    static async getOrCreate(poolId: string, signalingUrl?: string, cloudContext?: CloudContext): Promise<AppServices> {
+        const key = buildCacheKey(poolId, cloudContext);
+        const existing = instanceCache.get(key);
         if (existing) {
             existing.refCount++;
-            console.log(`[Fluent] Reusing existing connection for pool: ${poolId} (refs: ${existing.refCount})`);
+            console.log(`[Fluent] Reusing existing connection for key: ${key} (refs: ${existing.refCount})`);
             return existing.svc;
         }
 
         const svc = new AppServices();
-        await svc.initialize(poolId, signalingUrl);
-        instanceCache.set(poolId, { svc, refCount: 1 });
+        await svc.initialize(poolId, signalingUrl, cloudContext);
+        instanceCache.set(key, { svc, refCount: 1 });
         return svc;
     }
 
     /**
      * Release a reference. Only actually disconnects when refCount hits 0.
      */
-    static release(poolId: string): void {
-        const entry = instanceCache.get(poolId);
+    static release(poolId: string, cloudContext?: CloudContext): void {
+        const key = buildCacheKey(poolId, cloudContext);
+        const entry = instanceCache.get(key);
         if (!entry) return;
         entry.refCount--;
-        console.log(`[Fluent] Released pool ref: ${poolId} (refs: ${entry.refCount})`);
+        console.log(`[Fluent] Released key: ${key} (refs: ${entry.refCount})`);
         if (entry.refCount <= 0) {
-            entry.svc.network.disconnect();
-            instanceCache.delete(poolId);
-            console.log(`[Fluent] Disconnected from pool: ${poolId}`);
+            if (entry.svc.isCloudMode) {
+                entry.svc.cloudProvider?.disconnect();
+                entry.svc.cloudProvider?.destroy();
+                entry.svc.cloudProvider = null;
+            } else {
+                entry.svc.network.disconnect();
+            }
+            instanceCache.delete(key);
+            console.log(`[Fluent] Disconnected for key: ${key}`);
         }
     }
 

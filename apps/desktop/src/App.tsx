@@ -316,6 +316,7 @@ function App() {
       signalingUrl={screen.type === 'workspace' ? screen.signalingUrl : undefined}
       workspaceService={workspaceSvc}
       cloudWorkspaceId={planningWorkspaceId}
+      getAccessToken={getAccessToken}
     />
   );
 }
