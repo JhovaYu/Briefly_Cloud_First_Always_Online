@@ -169,6 +169,40 @@ SYNC PASS
 - Texto escrito en Tab A ("PM08C playwright A") apareció en Tab B ✓
 - Texto escrito en Tab B ("PM08C playwright B") apareció en Tab A ✓
 
+### PM-08D — Cloud Workspace Creation from Dashboard (PASS)
+**Alcance:** HomeDashboard + App.tsx — creación de workspaces cloud desde UI
+**Resultado:** PASS end-to-end
+
+**Implementación:**
+- `App.tsx` pasa `workspaceService` + `cloudProviderEnabled` a `HomeDashboard`
+- `HomeDashboard` hydrate: `workspaceService.listWorkspaces()` en mount cuando `COLLAB_USE_CLOUD_PROVIDER=true`
+- `HomeDashboard.handleCreate`: cloud path llama `workspaceService.createWorkspace(name)` → UUID real
+- Error path: si `createWorkspace` falla, **NO** hace fallback a P2P — muestra `role=alert` con mensaje de error
+- P2P legacy intacto: cuando `cloudProviderEnabled=false`, crea `pool-*` con `ws://localhost:4444`
+
+**Validación Playwright MCP:**
+- Crear workspace "PM08D Playwright 0504A" → `POST /api/workspace/workspaces` → 201 Created
+- ID creado: UUID real (`ec064326-1891-4ef7-b201-60c276423b4d`), **no** `pool-*`
+- `CloudYjsProvider` activado: `COLLAB_USE_CLOUD_PROVIDER=true, cloudContext present, using CloudYjsProvider`
+- Ticket: `POST /collab/{uuid}/{uuid}/ticket` → 200
+- WS connected: `ws://localhost:5173/collab/crdt/{uuid}/{uuid}`
+- Dashboard en segundo contexto (incógnito): workspace visible **sin añadir manualmente**
+- No se observó `pool-*` creado en modo cloud
+- Error path: catch sin fallback, `return` temprano, UI error visible
+
+**Commit:** `f83e061 feat(desktop): create cloud workspaces from dashboard`
+
+**Deuda PM-08D / PM-09A:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | WS transient failure: primera conexión WebSocket puede cerrarse antes de establecerse ("WebSocket is closed before connection established"), luego reconecta y conecta exitosamente. Race condition conocida en CloudYjsProvider lifecycle. |
+| 🔵 BAJO | TipTap: `@tiptap/extension-collaboration` incompatible con `@tiptap/extension-undo-redo`. No bloquea E2E. |
+| 🔵 BAJO | `localStorage` puede contener pools legacy viejos (`pool-*`). Limpiar `fluent-pools` manualmente si se quiere reset visual. |
+| 🔵 BAJO | Tickets/query strings aparecen en access logs del servidor. PM-09: mover ticket a primer mensaje WebSocket. |
+
+**Próximo paso:** PM-09A — CloudYjsProvider reconnect lifecycle + workspace isolation + TipTap undo-redo fix.
+
 ### PM-08B Deuda y caveats
 
 ALTO:
@@ -236,9 +270,9 @@ Se envió prompt para:
 ## Riesgos actuales
 
 CRÍTICOS:
-- Compatibilidad Yjs ↔ pycrdt-websocket
-- estabilidad WebSocket detrás de proxy
-- consumo de memoria en EC2
+- Compatibilidad Yjs ↔ pycrdt-websocket (resuelto PM-08A)
+- Estabilidad WebSocket detrás de proxy (resuelto PM-08B/B.2)
+- Consumo de memoria en EC2
 
 ALTOS:
 - configuración Nginx (headers + routing)
