@@ -27,7 +27,7 @@ const SCHEDULE_SERVICE_URL =
   (import.meta.env.VITE_SCHEDULE_SERVICE_URL as string | undefined) ||
   'http://localhost:8006';
 
-import { addPool, getUserProfile, saveUserProfile, type UserProfile } from './core/domain/UserProfile';
+import { addPool, getSavedPools, getUserProfile, saveUserProfile, type UserProfile, type PoolInfo } from './core/domain/UserProfile';
 import { ProfileSetup }  from './ui/screens/ProfileSetup';
 import { HomeDashboard } from './ui/screens/HomeDashboard';
 import { PoolWorkspace } from './ui/screens/PoolWorkspace';
@@ -154,6 +154,39 @@ function App() {
       cancelled = true;
     };
   }, [PLANNING_BACKEND_ENABLED, userProfile, cloudSessionAvailable, workspaceSvc]);
+
+  // PM-08C.1: hydrate the active cloud workspace into the local pool list
+  // so it appears in "Mis grupos" without requiring manual pool-id entry.
+  useEffect(() => {
+    if (!planningWorkspaceId) return;
+
+    const existingPools = getSavedPools();
+    if (existingPools.some((p: PoolInfo) => p.id === planningWorkspaceId)) return; // already listed
+
+    workspaceSvc.getWorkspace(planningWorkspaceId).then(ws => {
+      addPool({
+        id: ws.id,
+        name: ws.name || 'My Workspace',
+        icon: 'collab',
+        lastOpened: Date.now(),
+        createdAt: Date.now(),
+        signalingUrl: undefined,
+      });
+      console.info('[App] Hydrated active cloud workspace into pools', { workspaceId: planningWorkspaceId });
+    }).catch(() => {
+      // workspaceSvc ensures the active workspace exists; if getWorkspace
+      // fails here we still want it listed with a fallback name.
+      addPool({
+        id: planningWorkspaceId,
+        name: 'My Workspace',
+        icon: 'collab',
+        lastOpened: Date.now(),
+        createdAt: Date.now(),
+        signalingUrl: undefined,
+      });
+      console.info('[App] Hydrated active cloud workspace (fallback name)', { workspaceId: planningWorkspaceId });
+    });
+  }, [planningWorkspaceId, workspaceSvc]);
 
   useEffect(() => {
     if (!personalDocRef.current) return;
