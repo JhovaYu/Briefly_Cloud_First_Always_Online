@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import traceback
 
 from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -12,6 +14,16 @@ from app.use_cases.authenticate_collaboration import authenticate_collaboration
 from app.use_cases.issue_collaboration_ticket import (
     issue_collaboration_ticket,
 )
+
+
+# Diagnostic logger for Docker — writes to stdout so `docker compose logs` captures it
+# Use "uvicorn.error" to go to stderr, captured by Docker log driver
+_logger = logging.getLogger("uvicorn.error")
+
+
+def _log(prefix: str, msg: str) -> None:
+    """Print a safe log line to stdout for Docker. No secrets."""
+    print(f"[routes] {prefix} {msg}", flush=True)
 
 
 router = APIRouter(prefix="/collab")
@@ -173,8 +185,14 @@ async def issue_ticket(
     - 403 if no permission
     - 500 if workspace service down
     """
-    settings = Settings()
-    ticket_store = get_ticket_store()
+    _log("INFO", f"ticket_request ws_id={workspace_id!r} doc_id={document_id!r}")
+
+    try:
+        settings = Settings()
+        ticket_store = get_ticket_store()
+    except Exception as e:
+        _log("ERROR", f"ticket_init_failed: {type(e).__name__}: {e}")
+        raise
 
     try:
         result = await issue_collaboration_ticket(
@@ -186,16 +204,23 @@ async def issue_ticket(
             permission_timeout=settings.WORKSPACE_PERMISSION_TIMEOUT_SECONDS,
             ticket_ttl=settings.TICKET_TTL_SECONDS,
         )
+        _log("INFO", f"ticket_issued ws_id={workspace_id!r} doc_id={document_id!r} role={result.get('role')}")
         return TicketResponse(**result)
     except PermissionDenied as e:
+        _log("WARNING", f"ticket_permission_denied ws_id={workspace_id!r} doc_id={document_id!r}")
         from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except UpstreamUnavailable:
+        _log("WARNING", f"ticket_upstream_unavailable ws_id={workspace_id!r} doc_id={document_id!r}")
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Workspace service unavailable",
         )
     except Exception as e:
+        tb = traceback.format_exc()
+        _log("ERROR", f"ticket_internal_error ws_id={workspace_id!r} doc_id={document_id!r} exc={type(e).__name__} msg={str(e)}")
+        # Print traceback to stdout for Docker logs (no secrets in traceback)
+        print(f"[routes] TRACE: {tb}", flush=True)
         from fastapi import HTTPException, status
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
