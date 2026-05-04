@@ -102,24 +102,22 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
 
   // ─── Initialize services + REAL-TIME SYNC ───
-  const COLLAB_USE_CLOUD = import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
-
   // PM-08C.3: UUID-like detection — only real workspace UUIDs from backend qualify as cloud.
   // All arbitrary IDs (b_post_fix, join codes, legacy pool-*) fall through to P2P.
   const isUuidLike = (id: string): boolean =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
   useEffect(() => {
-    // Cloud workspace: must be UUID-like + no signalingUrl + token available.
-    // P2P pool: any non-UUID, or has signalingUrl, or no token.
-    const isCloudPool =
+    // Cloud candidate: pool has a UUID-like id and no signalingUrl — could be cloud
+    // if token is available. This is the "waiting" state, not a blocker.
+    // Local pools (non-UUID or has signalingUrl) skip this entirely.
+    const isCloudCandidate =
       !!cloudWorkspaceId &&
       isUuidLike(cloudWorkspaceId) &&
-      !signalingUrl &&
-      !!getAccessToken;
+      !signalingUrl;
 
-    // For P2P local pools, always provide a signalingUrl so AppServices never
-    // receives undefined when COLLAB_USE_CLOUD=true (no fail-fast trigger).
+    const isCloudPool = isCloudCandidate && !!getAccessToken;
+
     const effectiveSignalingUrl = isCloudPool
       ? undefined
       : signalingUrl ?? 'ws://localhost:4444';
@@ -136,15 +134,17 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
     if (!isCloudPool && cloudWorkspaceId) {
       console.info('[PoolWorkspace] local pool detected, using P2P adapter', {
         poolId: cloudWorkspaceId,
-        hasSignalingUrl: Boolean(signalingUrl),
+        hasSignalingUrl: Boolean(effectiveSignalingUrl),
         usedFallbackSignalingUrl: !signalingUrl,
       });
     }
 
-    if (COLLAB_USE_CLOUD && !cloudContext) {
-      console.log('[PoolWorkspace] cloud bootstrap waiting:', {
-        hasWorkspaceId: !!cloudWorkspaceId,
-        hasGetAccessToken: !!getAccessToken,
+    // Only block and wait when there is a cloud candidate but getAccessToken is missing.
+    // Local pools (isCloudCandidate=false) always proceed to AppServices.getOrCreate.
+    if (isCloudCandidate && !getAccessToken) {
+      console.info('[PoolWorkspace] cloud bootstrap waiting:', {
+        hasWorkspaceId: Boolean(cloudWorkspaceId),
+        hasGetAccessToken: Boolean(getAccessToken),
       });
       return;
     }
