@@ -96,7 +96,7 @@ export default function WorkspacesScreen() {
         setActionError(null);
         try {
             const result = await joinWorkspaceWithAuth(code);
-            await setActiveWorkspace(result.workspace.id);
+            await setActiveWorkspace(result.id);
             await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
             setJoinCode('');
             await loadWorkspaces();
@@ -145,14 +145,7 @@ export default function WorkspacesScreen() {
                     <Text style={styles.workspaceIconText}>W</Text>
                 </View>
                 <View style={styles.workspaceInfo}>
-                    <View style={styles.workspaceNameRow}>
-                        <Text style={styles.workspaceName} numberOfLines={1}>{item.name}</Text>
-                        {isActive && (
-                            <View style={styles.activeBadge}>
-                                <Text style={styles.activeBadgeText}>Activo</Text>
-                            </View>
-                        )}
-                    </View>
+                    <Text style={styles.workspaceName} numberOfLines={1}>{item.name}</Text>
                     <Text style={styles.workspaceDate}>{formatDate(item.created_at)}</Text>
                 </View>
                 {isActive ? (

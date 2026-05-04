@@ -164,7 +164,11 @@ export async function fetchWorkspacesWithAuth(): Promise<Workspace[]> {
  * @throws Error if workspace not found (404) or unauthorized (401/403)
  */
 export async function joinWorkspaceWithAuth(workspaceId: string): Promise<{
-    workspace: Workspace;
+    id: string;
+    name: string;
+    owner_id: string;
+    created_at: string;
+    updated_at: string;
     already_member: boolean;
 }> {
     const response = await fetchWithAuth(
@@ -174,7 +178,14 @@ export async function joinWorkspaceWithAuth(workspaceId: string): Promise<{
     if (!response.ok) {
         throw new Error(`Failed to join workspace: ${response.status}`);
     }
-    return response.json() as Promise<{ workspace: Workspace; already_member: boolean }>;
+    return response.json() as Promise<{
+        id: string;
+        name: string;
+        owner_id: string;
+        created_at: string;
+        updated_at: string;
+        already_member: boolean;
+    }>;
 }
 
 /**
