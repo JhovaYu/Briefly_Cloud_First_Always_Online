@@ -140,6 +140,35 @@ SYNC PASS
 - Texto escrito en B → apareció en A ✓
 - Sin fallback a y-webrtc/P2P observado
 
+### PM-08C — Cloud/Local Routing QA (PASS)
+**Alcance:** Playwright MCP browser-based validation
+**Resultado:** PASS
+
+**Pruebas ejecutadas:**
+- Backend health: `/collab/health` → `{"status":"ok"}`, `/collab/debug/version` → `has_mount_collab_crdt: true`
+- Local pool `c_post_fix`: `local_pool_detected: true`, `p2p_adapter_used: true`, **no** POST `/collab/c_post_fix/.../ticket`
+- Cloud UUID `b9e0369a-574e-40f7-b6b5-385fb1007fcb`: `POST /collab/{uuid}/{uuid}/ticket` → 200, WS connected
+- Two-context cloud sync: `sync_A_to_B: PASS`, `sync_B_to_A: PASS`
+
+**Routing observados:**
+- Pool arbitrario/local → `YjsWebRTCAdapter` (P2P)
+- Cloud workspace UUID → `CloudYjsProvider` (WebSocket)
+- Sin mezcla: no se observó P2P para cloud UUID ni cloud POST para pools locales
+
+**Deuda PM-08C:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🔴 CRÍTICO | Primera conexión WS devuelve `500 Unexpected response code` en handshake. Retry succeede. Indica posible race condition o límite de conexiones en collaboration-service. |
+| 🟡 ALTO | P2P signaling `ws://localhost:4444` siempre unavailable. **Expected behavior** cuando no corre servidor P2P local. No clasificar como fallo cloud. |
+| 🟡 ALTO | TipTap: `@tiptap/extension-collaboration` incompatible con `@tiptap/extension-undo-redo`. |
+| 🟢 MEDIO | Validar que Nginx production proxy (`wss://briefly.ddns.net/collab/crdt`) rutea igual que Vite dev proxy (`ws://localhost:5173/collab/crdt`). |
+| 🔵 BAJO | No había segundo workspace cloud UUID disponible para validar aislamiento entre rooms. |
+
+**Validación sync A↔B (PM-08B.2):**
+- Texto escrito en Tab A ("PM08C playwright A") apareció en Tab B ✓
+- Texto escrito en Tab B ("PM08C playwright B") apareció en Tab A ✓
+
 ### PM-08B Deuda y caveats
 
 ALTO:
