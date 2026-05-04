@@ -71,6 +71,12 @@ export class CloudYjsProvider {
     private abortController: AbortController | null = null;
     /** Set to true after first connection attempt (success or fail). Used to detect unwanted retry attempts. */
     private connectionAttempted = false;
+    /**
+     * Monotonically increasing generation.
+     * Incremented on every disconnect() — invalidates all in-flight _doConnect() calls.
+     * Each _doConnect() captures the generation at start and bails if it becomes stale.
+     */
+    private _connectGeneration = 0;
 
     constructor(doc: Y.Doc, config: CloudProviderConfig) {
         this.doc = doc;
@@ -137,12 +143,28 @@ export class CloudYjsProvider {
     }
 
     private async _doConnect(): Promise<void> {
+        // Capture generation at start — any disconnect() will increment it, making this stale.
+        const generation = ++this._connectGeneration;
+
+        // Per-iteration AbortController — fresh for each connect attempt.
+        // This replaces the old one stored in this.abortController during fetchTicket.
+        const abortController = new AbortController();
+        this.abortController = abortController;
+
         try {
+            // STALE CHECK: disconnect() was called before we got here.
+            if (abortController.signal.aborted) return;
+            if (generation !== this._connectGeneration) return;
+
             const ticket = await this.fetchTicket();
+
+            // STALE CHECK: disconnect() called while fetching ticket.
+            if (abortController.signal.aborted) return;
+            if (generation !== this._connectGeneration) return;
 
             const wsUrl = getCollabWsUrl();
             const roomName = `${this.workspaceId}/${this.documentId}`;
-            console.info('[CloudYjsProvider] WS connecting', { room: roomName, mode: 'cloud', url: wsUrl });
+            console.info('[CloudYjsProvider] WS connecting', { room: roomName, mode: 'cloud' });
 
             this.provider = new WebsocketProvider(
                 wsUrl,
@@ -153,6 +175,14 @@ export class CloudYjsProvider {
                     maxBackoffTime: 0,
                 },
             );
+
+            // STALE CHECK: another connect() started after we captured the ticket.
+            if (generation !== this._connectGeneration) {
+                // We are stale — destroy the provider we just created before it can do anything.
+                try { this.provider.destroy(); } catch (_e) { /* ignore */ }
+                this.provider = null;
+                return;
+            }
 
             // PM-08A.2 single-attempt mode: intercept error/close BEFORE y-websocket's
             // onclose retry fires. y-websocket schedules retry via setTimeout(setupWS, backoff)
@@ -182,8 +212,20 @@ export class CloudYjsProvider {
                     color: this.user.color,
                 });
             }
+        } catch (err: unknown) {
+            // Expected abort — disconnect() called during connect. Silent, no log.
+            if (abortController.signal.aborted) return;
+            // Stale generation — another disconnect() raced with this _doConnect(). Silent.
+            if (generation !== this._connectGeneration) return;
+            // Real error — log it (no secrets in scope at this point).
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error('[CloudYjsProvider] _doConnect error', { room: `${this.workspaceId}/${this.documentId}`, err: msg });
         } finally {
-            this.connectPromise = null;
+            // Only clear connectPromise if WE are the current generation.
+            // If we were aborted or stale, leave it so the next connect() can overwrite it.
+            if (generation === this._connectGeneration) {
+                this.connectPromise = null;
+            }
         }
     }
 
@@ -218,9 +260,13 @@ export class CloudYjsProvider {
 
     /**
      * Disconnect and destroy the WebsocketProvider.
-     * Cancels any in-flight ticket fetch via AbortController.
+     * Increments _connectGeneration to invalidate all in-flight _doConnect() calls.
+     * Resets connectionAttempted so a future connect() from a new mount can succeed.
      */
     disconnect(): void {
+        // Increment generation FIRST — this invalidates every in-flight _doConnect().
+        ++this._connectGeneration;
+
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -235,6 +281,8 @@ export class CloudYjsProvider {
         }
         this.connected = false;
         this.connectPromise = null;
+        // Allow reconnect after cleanup — essential for StrictMode remount.
+        this.connectionAttempted = false;
         console.info('[CloudYjsProvider] Disconnected', { room: `${this.workspaceId}/${this.documentId}`, mode: 'cloud' });
     }
 
