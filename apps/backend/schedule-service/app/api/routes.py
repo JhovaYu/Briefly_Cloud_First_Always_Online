@@ -11,6 +11,7 @@ from app.api.dependencies import get_current_user, get_db, require_workspace_acc
 from app.ports.workspace_permissions import WorkspacePermissions
 from app.ports.schedule_block_repository import ScheduleBlockRepository
 from app.domain.errors import ScheduleBlockNotFound, DuplicateResourceError
+from app.domain.schedule_block import ScheduleBlock
 from app.use_cases import list_schedule_blocks_for_date
 
 router = APIRouter()
