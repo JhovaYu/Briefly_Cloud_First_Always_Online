@@ -106,7 +106,7 @@ def healthz():
 @app.get("/collab/debug/version")
 async def debug_version():
     """Safe diagnostic endpoint — no secrets, no env vars, no tokens."""
-    from app.api.routes import get_ticket_store
+    from app.infrastructure.ticket_store import get_ticket_store
 
     ticket_store = get_ticket_store()
     has_old_ws_route = False

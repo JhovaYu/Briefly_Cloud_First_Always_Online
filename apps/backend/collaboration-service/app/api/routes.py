@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import traceback
@@ -6,67 +5,24 @@ import traceback
 from fastapi import APIRouter, Header, HTTPException, status, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from app.adapters.in_memory_ticket_store import InMemoryTicketStore
-from app.adapters.workspace_client import WorkspacePermissionsClient
 from app.config.settings import Settings
 from app.domain.errors import PermissionDenied, UpstreamUnavailable
-from app.use_cases.authenticate_collaboration import authenticate_collaboration
-from app.use_cases.issue_collaboration_ticket import (
-    issue_collaboration_ticket,
-)
-from app.shared.collab_debug import CRDT_DEBUG_MARKER
+from app.use_cases.issue_collaboration_ticket import issue_collaboration_ticket
+from app.infrastructure.ticket_store import get_ticket_store
 
 
-# Do not import crdt_routes here; it imports get_ticket_store from this module.
 _ticket_debug_marker = "pm08a-crdt-debug-v1"
 _ticket_pid = os.getpid()
 
 
-# Diagnostic logger for Docker — writes to stdout so `docker compose logs` captures it
-# Use "uvicorn.error" to go to stderr, captured by Docker log driver
 _logger = logging.getLogger("uvicorn.error")
 
 
 def _log(prefix: str, msg: str) -> None:
-    """Print a safe log line to stdout for Docker. No secrets."""
     print(f"[routes] {prefix} {msg}", flush=True)
 
 
 router = APIRouter(prefix="/collab")
-
-# Close codes (kept for potential future use)
-CLOSE_AUTH_TIMEOUT = 4003
-CLOSE_INVALID_MESSAGE = 4400
-CLOSE_PERMISSION_DENIED = 4003
-CLOSE_UPSTREAM_ERROR = 1011
-
-_settings: Settings | None = None
-
-
-def get_settings() -> Settings:
-    global _settings
-    if _settings is None:
-        _settings = Settings()
-    return _settings
-
-
-def get_workspace_permissions() -> WorkspacePermissionsClient:
-    s = get_settings()
-    return WorkspacePermissionsClient(
-        base_url=s.WORKSPACE_SERVICE_URL,
-        timeout=s.WORKSPACE_PERMISSION_TIMEOUT_SECONDS,
-    )
-
-
-# Global ticket store (singleton per service, in-memory)
-_ticket_store: InMemoryTicketStore | None = None
-
-
-def get_ticket_store() -> InMemoryTicketStore:
-    global _ticket_store
-    if _ticket_store is None:
-        _ticket_store = InMemoryTicketStore()
-    return _ticket_store
 
 
 @router.get("/health")
@@ -77,20 +33,6 @@ def collab_health():
 @router.get("/healthz")
 def collab_healthz():
     return {"status": "ok", "service": "collaboration-service"}
-
-
-@router.get("/debug/version")
-async def debug_version():
-    """Safe diagnostic endpoint — no secrets, no env vars, no tokens."""
-    return {
-        "service": "collaboration-service",
-        "marker": "pm08a-crdt-debug-v1",
-        "pid": os.getpid(),
-        "ticket_store_type": "in_memory",
-        "ticket_store_id": id(get_ticket_store()),
-        "crdt_debug_enabled": True,
-        "has_on_connect_marker": True,
-    }
 
 
 @router.websocket("/echo")

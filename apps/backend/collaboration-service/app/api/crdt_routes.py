@@ -1,12 +1,14 @@
 """
 CRDT WebSocket endpoint using pycrdt-websocket.
 
-This is an experimental endpoint for PM-03D.
-Uses ASGIServer + WebsocketServer for CRDT room management.
-Auth is handled via short-lived opaque tickets (no JWT in query string).
+PM-08A: Mounted unconditionally at /collab/crdt.
+Auth via short-lived opaque ticket in query string (?ticket=<id>).
 
-Note: This endpoint requires ENABLE_EXPERIMENTAL_CRDT_ENDPOINT=true to be mounted.
-The stable endpoint with verified auth is /collab/{ws_id}/{doc_id} (PM-03B first-message auth).
+Security note (PM-09 debt):
+  Ticket travels in query string. WSS encrypts transit, but server access
+  logs may record ?ticket=... values. TTL is short (60s) and environment
+  is controlled for the PM-08A demo. Revisit in PM-09: either move ticket
+  to WebSocket first-message or redact access logs.
 """
 
 import logging
@@ -19,8 +21,11 @@ from pycrdt.websocket import ASGIServer, WebsocketServer
 # Module-level pid for cross-process correlation
 _crdt_pid = os.getpid()
 
-from app.adapters.in_memory_ticket_store import InMemoryTicketStore
-from app.api.routes import get_ticket_store
+# PM-08A: Verbose diagnostics off by default for clean logs.
+# Set to True locally to trace ASGI scope / path parsing.
+_CRDT_DIAGNOSTICS = False
+
+from app.infrastructure.ticket_store import get_ticket_store
 from app.use_cases.validate_collaboration_ticket import (
     TicketInvalid,
     validate_collaboration_ticket,
@@ -38,7 +43,7 @@ class _DiagnosticsASGIApp:
         self._manager = manager
 
     async def __call__(self, scope, receive, send):
-        if scope.get("type") == "websocket":
+        if _CRDT_DIAGNOSTICS and scope.get("type") == "websocket":
             path = scope.get("path", "")
             qs = scope.get("query_string", b"")
             has_query = bool(qs and len(qs) > 0)
@@ -175,12 +180,13 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
         path_type = "full" if raw_path.startswith("/collab/crdt") else "relative"
         room_key = f"{workspace_id}/{document_id}"
 
-        print(
-            f"[crdt] PARSED path_type={path_type} ws_id={workspace_id!r} "
-            f"doc_id={document_id!r} room_key={room_key!r} "
-            f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
-            flush=True,
-        )
+        if _CRDT_DIAGNOSTICS:
+            print(
+                f"[crdt] PARSED path_type={path_type} ws_id={workspace_id!r} "
+                f"doc_id={document_id!r} room_key={room_key!r} "
+                f"marker={CRDT_DEBUG_MARKER} pid={_crdt_pid}",
+                flush=True,
+            )
 
         # ── Validate ticket ──────────────────────────────────────────────────
         try:
