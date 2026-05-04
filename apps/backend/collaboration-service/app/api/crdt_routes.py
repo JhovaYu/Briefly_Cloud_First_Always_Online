@@ -219,6 +219,11 @@ def create_crdt_app(document_store=None) -> tuple[Any, Any]:
 
         return False  # accept
 
+    async def on_disconnect(msg: dict) -> None:
+        """Handle client disconnect: remove channel from room manager."""
+        channel_id = id(msg)
+        await manager.handle_disconnect(channel_id)
+
     asgi_server = ASGIServer(ws_server, on_connect=on_connect, on_disconnect=on_disconnect)
     # PM-09A.2: validate ticket in ASGI wrapper BEFORE pycrdt-websocket sees the connection
     wrapped = _WSAuthASGIApp(asgi_server, manager, ticket_store)
