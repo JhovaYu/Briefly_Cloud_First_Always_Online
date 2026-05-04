@@ -59,3 +59,8 @@ class SharedTextResponse(BaseModel):
 
 class UpdateSharedTextRequest(BaseModel):
     content: str = Field(..., max_length=50000)
+
+
+class JoinWorkspaceResponse(BaseModel):
+    workspace: WorkspaceResponse
+    already_member: bool

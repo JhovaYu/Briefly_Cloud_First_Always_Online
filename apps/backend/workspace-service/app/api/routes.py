@@ -11,6 +11,7 @@ from app.api.schemas import (
     MeResponse,
     SharedTextResponse,
     UpdateSharedTextRequest,
+    JoinWorkspaceResponse,
 )
 from app.api.dependencies import (
     get_current_user,
@@ -33,6 +34,7 @@ from app.use_cases import (
     create_document,
     list_documents,
     get_permissions,
+    join_workspace,
 )
 
 router = APIRouter()
@@ -121,6 +123,35 @@ async def get_workspace_endpoint(
         owner_id=workspace.owner_id,
         created_at=workspace.created_at.isoformat(),
         updated_at=workspace.updated_at.isoformat(),
+    )
+
+
+@router.post("/workspaces/{workspace_id}/join", response_model=JoinWorkspaceResponse)
+async def join_workspace_endpoint(
+    workspace_id: str,
+    current_user: TokenPayload = Depends(get_current_user),
+    workspace_repo: WorkspaceRepository = Depends(get_workspace_repo),
+    membership_repo: MembershipRepository = Depends(get_membership_repo),
+):
+    try:
+        workspace, already_member = await join_workspace(
+            workspace_id=workspace_id,
+            user_id=current_user.sub,
+            workspace_repo=workspace_repo,
+            membership_repo=membership_repo,
+        )
+    except WorkspaceNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    return JoinWorkspaceResponse(
+        workspace=WorkspaceResponse(
+            id=workspace.id,
+            name=workspace.name,
+            owner_id=workspace.owner_id,
+            created_at=workspace.created_at.isoformat(),
+            updated_at=workspace.updated_at.isoformat(),
+        ),
+        already_member=already_member,
     )
 
 
