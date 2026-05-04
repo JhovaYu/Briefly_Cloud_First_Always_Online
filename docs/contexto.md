@@ -203,6 +203,55 @@ SYNC PASS
 
 **Próximo paso:** PM-09A — CloudYjsProvider reconnect lifecycle + workspace isolation + TipTap undo-redo fix.
 
+### PM-09A — Cloud CRDT Invalid/Expired Ticket Fix (PASS)
+**Alcance:** collaboration-service — evitar HTTP 500 al recibir ticket inválido o expirado
+**Resultado:** PASS
+
+**Commits validados:**
+- `21bee32` fix(desktop): make cloud websocket connect lifecycle idempotent
+- `d193d0a` fix(collab): close CRDT websocket on invalid ticket
+- `5095554` fix(collab): restore CRDT websocket disconnect handler
+
+**Validación EC2 logs:**
+```
+[crdt] APP_CREATED path=/collab/crdt store_type=local marker=pm08a-crdt-debug-v1 pid=1
+[crdt] ATTEMPT ... path='/collab/crdt/{uuid}/{uuid}' has_ticket=True
+[crdt] DENIED reason=ticket_expired ... has_ticket=True
+[crdt] ATTEMPT ... path='/collab/crdt/{uuid}/{uuid}' has_ticket=False
+[crdt] DENIED reason=missing_ticket ... has_ticket=False
+```
+- Sin `ASGI callable returned without sending handshake`
+- Sin ERROR logs
+- Sin HTTP 500 en logs backend
+- Logs seguros: no exponen tickets ni prefijos
+
+**Validación Playwright E2E (workspace `d8ffd0e7-b0ae-4555-b49e-f1b9a8fbf2cf`):**
+- `new_workspace_created: true`
+- `ticket_status: 200`
+- `ws_connected: true`
+- `http_500_seen: false`
+- `asgi_handshake_error_seen: false`
+- `sync_A_to_B: pass`
+- `sync_B_to_A: pass`
+
+**Criterios cumplidos:**
+- Ticket inválido/expirado no produce 500 en backend
+- Ticket ausente no produce 500 en backend
+- Workspace cloud nuevo conecta WebSocket exitosamente
+- Sync CRDT bidireccional A↔B funciona
+- Logs no exponen credentials
+
+**Deuda PM-09A / restante:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | WebSocket transient warning ocasional: primera conexión puede cerrarse antes de establecerse ("WebSocket is closed before connection established"), luego reconecta y conecta exitosamente. Race condition conocida en CloudYjsProvider lifecycle. Sin 500, sync PASS — no bloquea. |
+| 🔵 BAJO | Ticket en query string (`?ticket=...`). Access logs del servidor contienen tickets. PM-09 plan: mover ticket a primer mensaje WebSocket. |
+| 🔵 BAJO | TipTap: `@tiptap/extension-collaboration` incompatible con `@tiptap/extension-undo-redo`. No bloquea sync. |
+| 🔵 BAJO | `localStorage` puede contener pools legacy viejos (`pool-*`). Limpiar manualmente si se quiere reset visual. |
+
+**Resultado final:** PASS — El hotfix de `d193d0a` resuelve el crash del backend ante tickets inválidos/expirados. El happy path CRDT sync cloud funciona bidireccionalmente.
+
 ### PM-08B Deuda y caveats
 
 ALTO:
