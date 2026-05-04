@@ -365,11 +365,19 @@ function bsecretcheck {
             Write-Host "  [FAIL] $resolved" -ForegroundColor Red
             Write-Host "         -> AWS Session Token" -ForegroundColor Yellow
         }
-        if ($content -cmatch "eyJ[A-Za-z0-9+/]{20,}") {
-            $found = $true
-            Write-Host ""
-            Write-Host "  [FAIL] $resolved" -ForegroundColor Red
-            Write-Host "         -> JWT token" -ForegroundColor Yellow
+        # JWT requires 3 dot-separated base64url segments (header.payload.signature)
+        # This structural check avoids false-positives on package names like js-tokens/css-tokenizer
+        # or SHA512 integrity hashes that happen to start with eyJ
+        $jwtMatches = [regex]::Matches($content, "eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+        foreach ($m in $jwtMatches) {
+            $parts = $m.Value.Split('.')
+            if ($parts.Count -eq 3) {
+                $found = $true
+                Write-Host ""
+                Write-Host "  [FAIL] $resolved" -ForegroundColor Red
+                Write-Host "         -> JWT token (3-segment structure)" -ForegroundColor Yellow
+                break
+            }
         }
         if ($content -cmatch "sb_secret_[a-zA-Z0-9+/=]{20,}") {
             $found = $true
