@@ -14,6 +14,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
 import { createPlanningClient } from '../src/services/planningClient';
 import { createWorkspaceClient } from '../src/services/workspaceClient';
+import { queryClient } from '../src/lib/queryClient';
 import { createUuid } from '@tuxnotas/shared/src/logic/uuid';
 import type { PlanningTask, PlanningTaskState } from '@tuxnotas/shared/src/domain/Entities';
 
@@ -135,6 +136,7 @@ export default function TasksScreen() {
             setTasks(prev =>
                 prev.map(t => (t.id === tempId ? { ...created, list_id: created.list_id ?? undefined } : t))
             );
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
         } catch {
             setTasks(prev => prev.filter(t => t.id !== tempId));
         } finally {
@@ -162,6 +164,7 @@ export default function TasksScreen() {
             }
 
             await planningClient.updateTask(workspaceId, taskId, { state: newState });
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
         } catch {
             loadTasks();
         }
@@ -186,6 +189,7 @@ export default function TasksScreen() {
             }
 
             await planningClient.deleteTask(workspaceId, taskId);
+            queryClient.invalidateQueries({ queryKey: ['tasks'] });
         } catch {
             setTasks(previous);
         }

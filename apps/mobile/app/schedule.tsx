@@ -16,6 +16,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
 import { createScheduleClient } from '../src/services/scheduleClient';
 import { createWorkspaceClient } from '../src/services/workspaceClient';
+import { queryClient } from '../src/lib/queryClient';
 import { createUuid } from '@tuxnotas/shared/src/logic/uuid';
 import type { ScheduleBlock } from '../src/services/scheduleClient';
 
@@ -257,6 +258,7 @@ export default function ScheduleScreen() {
                     return next;
                 });
             }
+            queryClient.invalidateQueries({ queryKey: ['schedule'] });
             setModalVisible(false);
         } catch (err: any) {
             setFormError(err?.message ?? 'Error guardando bloque');
@@ -290,6 +292,7 @@ export default function ScheduleScreen() {
 
         try {
             await scheduleClient.deleteScheduleBlock(workspaceId, block.id);
+            queryClient.invalidateQueries({ queryKey: ['schedule'] });
         } catch {
             setBlocks(previous);
         }
