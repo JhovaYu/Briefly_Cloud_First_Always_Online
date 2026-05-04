@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
 import { createWorkspaceClient } from '../src/services/workspaceClient';
+import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
 import type { Workspace } from '@tuxnotas/shared/src/domain/Entities';
 
 function formatDate(isoString: string): string {
@@ -30,6 +31,7 @@ export default function WorkspacesScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const { activeWorkspaceId, setActiveWorkspace } = useActiveWorkspace();
 
     const loadWorkspaces = useCallback(async () => {
         const token = getAccessToken();
@@ -70,18 +72,35 @@ export default function WorkspacesScreen() {
         router.push(`/workspace-detail?id=${encodeURIComponent(workspace.id)}`);
     };
 
-    const renderItem = ({ item }: { item: Workspace }) => (
-        <TouchableOpacity style={styles.workspaceItem} onPress={() => handleWorkspacePress(item)}>
-            <View style={styles.workspaceIcon}>
-                <Text style={styles.workspaceIconText}>W</Text>
-            </View>
-            <View style={styles.workspaceInfo}>
-                <Text style={styles.workspaceName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.workspaceDate}>{formatDate(item.created_at)}</Text>
-            </View>
-            <Text style={styles.workspaceArrow}>→</Text>
-        </TouchableOpacity>
-    );
+    const renderItem = ({ item }: { item: Workspace }) => {
+        const isActive = item.id === activeWorkspaceId;
+        return (
+            <TouchableOpacity
+                style={styles.workspaceItem}
+                onPress={() => handleWorkspacePress(item)}
+                onLongPress={() => !isActive && setActiveWorkspace(item.id)}
+            >
+                <View style={styles.workspaceIcon}>
+                    <Text style={styles.workspaceIconText}>W</Text>
+                </View>
+                <View style={styles.workspaceInfo}>
+                    <View style={styles.workspaceNameRow}>
+                        <Text style={styles.workspaceName} numberOfLines={1}>{item.name}</Text>
+                        {isActive && (
+                            <View style={styles.activeBadge}>
+                                <Text style={styles.activeBadgeText}>Activo</Text>
+                            </View>
+                        )}
+                    </View>
+                    <Text style={styles.workspaceDate}>{formatDate(item.created_at)}</Text>
+                    {!isActive && (
+                        <Text style={styles.setActiveHint}>Mantén presionado para usar en Hoy</Text>
+                    )}
+                </View>
+                <Text style={styles.workspaceArrow}>→</Text>
+            </TouchableOpacity>
+        );
+    };
 
     if (authLoading) {
         return (
@@ -191,6 +210,17 @@ const styles = StyleSheet.create({
     workspaceIconText: { color: '#aeb4ff', fontSize: 18, fontWeight: 'bold' },
     workspaceInfo: { flex: 1 },
     workspaceName: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 4 },
+    workspaceNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    activeBadge: {
+        backgroundColor: '#1a3a1a',
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderWidth: 1,
+        borderColor: '#2d6a2d',
+    },
+    activeBadgeText: { color: '#4ade80', fontSize: 10, fontWeight: '700' },
+    setActiveHint: { color: '#444', fontSize: 11, marginTop: 3 },
     workspaceDate: { color: '#555', fontSize: 12 },
     workspaceArrow: { color: '#555', fontSize: 18 },
     empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },

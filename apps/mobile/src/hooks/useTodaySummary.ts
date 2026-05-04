@@ -12,7 +12,7 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useWorkspaces } from './useWorkspaces';
+import { useActiveWorkspace } from './useActiveWorkspace';
 import { useTasks } from './useTasks';
 import { useSchedule } from './useSchedule';
 import { getLocalDateString } from '../utils/dateUtils';
@@ -73,35 +73,35 @@ export function useTodaySummary(): TodaySummary {
     const queryClient = useQueryClient();
     const todayDate = getLocalDateString();
 
-    // Fetch workspaces — derive workspaceId from first workspace
+    // Resolve active workspace with fallback
     const {
-        data: workspaces,
-        isLoading: wsLoading,
-        error: wsError,
-    } = useWorkspaces();
+        activeWorkspaceId: workspaceId,
+        activeWorkspaceName: workspaceName,
+        loading: wsLoading,
+    } = useActiveWorkspace();
 
-    const workspaceId = workspaces?.[0]?.id;
-    const workspaceName = workspaces?.[0]?.name ?? '';
+    // useTasks/useSchedule need string | undefined
+    const wsId = workspaceId ?? undefined;
 
     // Fetch tasks for today (local date filter)
     const {
         data: tasksData,
         isLoading: tasksLoading,
         error: tasksError,
-    } = useTasks(workspaceId, todayDate);
+    } = useTasks(wsId, todayDate);
 
     // Fetch schedule blocks for today (local date → day_of_week filter)
     const {
         data: blocksData,
         isLoading: scheduleLoading,
         error: scheduleError,
-    } = useSchedule(workspaceId, todayDate);
+    } = useSchedule(wsId, todayDate);
 
     // Combine loading state — true while any query is loading
     const loading = wsLoading || tasksLoading || scheduleLoading;
 
     // First non-null error from any query
-    const firstError = wsError ?? tasksError ?? scheduleError;
+    const firstError = tasksError ?? scheduleError;
     const error = firstError
         ? firstError instanceof Error
             ? firstError.message
