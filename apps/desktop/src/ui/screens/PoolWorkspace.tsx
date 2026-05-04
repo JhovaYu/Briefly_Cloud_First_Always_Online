@@ -105,11 +105,16 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
   const COLLAB_USE_CLOUD = import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true';
 
   useEffect(() => {
-    // PM-08A: Gate on cloudWorkspaceId + getAccessToken only.
-    // NOTE: activeNoteId is NOT in this guard — it is resolved AFTER
-    // AppServices is created (from the Y.Doc notes map). Adding it here
-    // would create a bootstrap deadlock.
-    const cloudContext = (cloudWorkspaceId && getAccessToken)
+    // PM-08C.2: Explicit P2P vs cloud routing.
+    // Cloud workspace: UUID (not starting with 'pool-') + no signalingUrl.
+    // Local P2P pool: id starts with 'pool-' OR has signalingUrl.
+    const isCloudPool =
+      !!cloudWorkspaceId &&
+      !cloudWorkspaceId.startsWith('pool-') &&
+      !signalingUrl &&
+      !!getAccessToken;
+
+    const cloudContext = isCloudPool
       ? {
           workspaceId: cloudWorkspaceId,
           documentId: cloudWorkspaceId,
@@ -117,6 +122,13 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
           user: { name: user.name, color: user.color },
         }
       : undefined;
+
+    if (!isCloudPool && cloudWorkspaceId) {
+      console.info('[PoolWorkspace] local pool detected, using P2P adapter', {
+        poolId: cloudWorkspaceId,
+        hasSignalingUrl: Boolean(signalingUrl),
+      });
+    }
 
     if (COLLAB_USE_CLOUD && !cloudContext) {
       console.log('[PoolWorkspace] cloud bootstrap waiting:', {

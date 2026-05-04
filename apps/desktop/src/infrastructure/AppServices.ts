@@ -57,10 +57,11 @@ export class AppServices implements CollaborationService {
     async initialize(poolId: string = 'fluent-default-pool', signalingUrl?: string, cloudContext?: CloudContext): Promise<void> {
         this.isCloudMode = !!(COLLAB_USE_CLOUD_PROVIDER && cloudContext);
 
-        if (COLLAB_USE_CLOUD_PROVIDER && !cloudContext) {
+        // PM-08C.2: Allow P2P when signalingUrl is provided, even in cloud mode.
+        // Throw only when cloud mode is active but NEITHER cloudContext NOR signalingUrl exists.
+        if (COLLAB_USE_CLOUD_PROVIDER && !cloudContext && !signalingUrl) {
             throw new Error(
-                '[AppServices] COLLAB_USE_CLOUD_PROVIDER=true but cloudContext missing. ' +
-                'Aborting to prevent silent P2P fallback.',
+                '[AppServices] COLLAB_USE_CLOUD_PROVIDER=true but no cloudContext and no P2P signalingUrl. Aborting.',
             );
         }
 
