@@ -85,6 +85,87 @@ Define:
 
 ## Estado actual de implementación
 
+### PM-08A — Backend CRDT Cloud Smoke (PASS)
+**Alcance:** collaboration-service en EC2 + Docker Compose
+**Resultado:** SYNC PASS
+
+- `/collab/crdt` montado incondicionalmente (eliminación de `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT`)
+- WebSocketRoute vieja eliminada en `routes.py`
+- Ticket store movido a `app/infrastructure/ticket_store.py` (neutral singleton)
+- `get_ticket_store` importado desde infraestructura en `crdt_routes.py` y `routes.py`
+- `ENABLE_EXPERIMENTAL_CRDT_ENDPOINT` eliminado de `settings.py`
+- Logs CRDT verbosos (ASGI_SCOPE, PARSED) gateados tras `_CRDT_DIAGNOSTICS=False`
+- Security debt PM-09 documentado en `crdt_routes.py` (ticket en query string)
+- Debug endpoint `/collab/debug/version` consolidado en `main.py` (app-level only)
+
+** Smoke test Node/y-websocket:**
+```
+Ticket fetch:     PASS
+Provider A:       PASS
+Provider B:       PASS
+Initial sync:     PASS
+A -> B sync:      PASS
+B -> A sync:      PASS
+SYNC PASS
+```
+
+### PM-08B.1 — Desktop CloudYjsProvider Wiring (COMMITTED)
+**Alcance:** apps/desktop
+**Resultado:** build PASS, manual E2E smoke PASS
+
+- `CloudYjsProvider.ts` spike creado (y-websocket WebsocketProvider wrapper)
+- `AppServices.ts` actualizado: cloud mode, fail-fast guard, destroy lifecycle, cache key separation
+- `PoolWorkspace.tsx` actualizado: construye `cloudContext` de `cloudWorkspaceId + getAccessToken`
+- `App.tsx` actualizado: pasa `getAccessToken` a PoolWorkspace
+- `vite.config.ts` actualizado: proxy `/collab` con `ws: true`, `secure: !useCloudProxy`
+- `package.json` actualizado: `y-websocket` + `ws` en dependencies
+- Fail-fast: lanza error si `COLLAB_USE_CLOUD_PROVIDER=true` pero falta `cloudContext`
+- Observabilidad: logs estructurados `{ room, mode }` sin secrets
+
+### PM-08B.2 — Desktop E2E Two-Browser Smoke (PASS)
+**Alcance:** localhost + Vite proxy → collaboration-service
+**Resultado:** SYNC PASS bidireccional
+
+- Browser A (normal) + Browser B (incognito), misma cuenta, mismo workspace
+- Ticket POST `/collab/{workspaceId}/{documentId}/ticket` → 200
+- WS `/collab/crdt/{workspaceId}/{documentId}` conectado (101 Switching Protocols)
+- Console logs observados:
+  - `[AppServices] COLLAB_USE_CLOUD_PROVIDER=true, cloudContext present, using CloudYjsProvider`
+  - `[CloudYjsProvider] ticket_fetch attempted`
+  - `[CloudYjsProvider] ticket_fetch success`
+  - `[CloudYjsProvider] WS connecting`
+  - `[CloudYjsProvider] ws_connected`
+- Room usada: `{workspaceId}/{documentId}` (mismo valor, smoke de documento único)
+- Texto escrito en A → apareció en B ✓
+- Texto escrito en B → apareció en A ✓
+- Sin fallback a y-webrtc/P2P observado
+
+### PM-08B Deuda y caveats
+
+ALTO:
+- Dashboard/workspace listing: workspace cloud no aparece automáticamente en "Mis grupos";
+  requiere añadir pool-id manualmente. Cloud-first dashboard hydration pendiente.
+
+MEDIO:
+- TipTap: `@tiptap/extension-collaboration` incompatible con `@tiptap/extension-undo-redo`.
+  No bloquea E2E; revisión pendiente.
+- React StrictMode: conexiones/desconexiones iniciales observadas, pero ws_connected final
+  y sync PASS. Lifecycle/reconnect como deuda PM-09.
+
+BAJO:
+- Ticket por query string aparece en access logs del servidor.
+  PM-09: mover ticket a primer mensaje WebSocket o redactar access logs.
+
+### PM-09 Plan (pendiente)
+- Implementar reconnect automático en CloudYjsProvider (quitar single-attempt mode)
+- Mover ticket de query string a primer mensaje WebSocket
+- Redactar access logs de tickets
+- Per-note document rooms (actualmente workspace-wide)
+- React StrictMode lifecycle idempotente
+- Resolver TipTap undo-redo incompatibility
+
+## Estado de implementación (histórico)
+
 ### PM-01 (Foundation backend)
 - Prompt maestro ya enviado a Minimax
 - Minimax respondió con:
