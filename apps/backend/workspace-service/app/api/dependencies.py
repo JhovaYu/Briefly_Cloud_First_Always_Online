@@ -13,11 +13,30 @@ from app.adapters.persistence.in_memory_repositories import (
     InMemoryMembershipRepository,
     InMemoryDocumentRepository,
 )
+from app.adapters.persistence.sqlalchemy_repo_impl import (
+    SQLAlchemyWorkspaceRepository,
+    SQLAlchemyMembershipRepository,
+    init_db,
+)
 from app.adapters.persistence.workspace_shared_text_persistence import (
     SQLAlchemyWorkspaceSharedTextRepository,
     InMemoryWorkspaceSharedTextRepository,
 )
 from app.config.settings import Settings
+
+settings = Settings()
+
+async def ensure_workspace_db_initialized():
+    """Create workspace/membership tables at startup if using postgres."""
+    if settings.WORKSPACE_STORE_TYPE == "postgres" and settings.WORKSPACE_DATABASE_URL:
+        try:
+            await init_db()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Could not initialize workspace DB tables: {e}. "
+                "Workspaces may not persist."
+            )
 
 security = HTTPBearer()
 
@@ -40,14 +59,34 @@ def get_settings() -> Settings:
 def get_workspace_repo() -> WorkspaceRepository:
     global _workspace_repo
     if _workspace_repo is None:
-        _workspace_repo = InMemoryWorkspaceRepository()
+        settings = get_settings()
+        if settings.WORKSPACE_STORE_TYPE == "postgres":
+            if not settings.WORKSPACE_DATABASE_URL:
+                raise RuntimeError(
+                    "WORKSPACE_STORE_TYPE is 'postgres' but WORKSPACE_DATABASE_URL is not set. "
+                    "Cannot start workspace-service in persistence mode without a database URL. "
+                    "Set WORKSPACE_DATABASE_URL or set WORKSPACE_STORE_TYPE to 'in_memory'."
+                )
+            _workspace_repo = SQLAlchemyWorkspaceRepository()
+        else:
+            _workspace_repo = InMemoryWorkspaceRepository()
     return _workspace_repo
 
 
 def get_membership_repo() -> MembershipRepository:
     global _membership_repo
     if _membership_repo is None:
-        _membership_repo = InMemoryMembershipRepository()
+        settings = get_settings()
+        if settings.WORKSPACE_STORE_TYPE == "postgres":
+            if not settings.WORKSPACE_DATABASE_URL:
+                raise RuntimeError(
+                    "WORKSPACE_STORE_TYPE is 'postgres' but WORKSPACE_DATABASE_URL is not set. "
+                    "Cannot start workspace-service in persistence mode without a database URL. "
+                    "Set WORKSPACE_DATABASE_URL or set WORKSPACE_STORE_TYPE to 'in_memory'."
+                )
+            _membership_repo = SQLAlchemyMembershipRepository()
+        else:
+            _membership_repo = InMemoryMembershipRepository()
     return _membership_repo
 
 

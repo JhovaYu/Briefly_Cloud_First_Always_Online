@@ -23,6 +23,10 @@ async def create_workspace(
     )
     await workspace_repo.create(workspace)
 
+    # NOTE:
+    # workspace and membership are persisted via separate repository operations.
+    # If membership creation fails after workspace creation, an orphan workspace remains.
+    # PM-10A.2: introduce Unit of Work with shared transaction or rollback cleanup.
     membership = Membership(
         id=str(uuid.uuid4()),
         workspace_id=workspace.id,

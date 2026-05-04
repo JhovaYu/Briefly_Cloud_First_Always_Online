@@ -1,12 +1,21 @@
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.routes import router
+from app.api.dependencies import ensure_workspace_db_initialized
 from app.config.settings import Settings
 
 settings = Settings()
 
-app = FastAPI(title="workspace-service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await ensure_workspace_db_initialized()
+    yield
+
+
+app = FastAPI(title="workspace-service", lifespan=lifespan)
 app.include_router(router)
 
 
