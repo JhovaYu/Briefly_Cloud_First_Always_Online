@@ -5,12 +5,7 @@
  * el layout XML y el appwidget-info XML en el proyecto Android
  * generado por prebuild.
  *
- * PM-10D.3: renderer + module ahora viven en modules/briefly-widget/
- * y se autoconectan via expo autolinking. Plugin solo copia lo
- * que debe existir en android/app/src/main/:
- *   - TodayWidgetProvider.kt (provider)
- *   - today_widget.xml (layout)
- *   - today_widget_info.xml (config)
+ * PM-10D.2: copia Provider + layout + info al android/ generado.
  */
 
 const {
