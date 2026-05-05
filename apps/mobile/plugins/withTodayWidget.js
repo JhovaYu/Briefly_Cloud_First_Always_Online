@@ -5,7 +5,12 @@
  * el layout XML y el appwidget-info XML en el proyecto Android
  * generado por prebuild.
  *
- * PM-10D.3: agrega TodayWidgetRenderer + BrieflyWidgetModule
+ * PM-10D.3: renderer + module ahora viven en modules/briefly-widget/
+ * y se autoconectan via expo autolinking. Plugin solo copia lo
+ * que debe existir en android/app/src/main/:
+ *   - TodayWidgetProvider.kt (provider)
+ *   - today_widget.xml (layout)
+ *   - today_widget_info.xml (config)
  */
 
 const {
@@ -20,14 +25,10 @@ const PLUGIN_DIR = path.join(__dirname, 'today-widget');
 const KOTLIN_SOURCE = path.join(PLUGIN_DIR, 'TodayWidgetProvider.kt');
 const LAYOUT_SOURCE = path.join(PLUGIN_DIR, 'res', 'layout', 'today_widget.xml');
 const XML_INFO_SOURCE = path.join(PLUGIN_DIR, 'res', 'xml', 'today_widget_info.xml');
-const RENDERER_SOURCE = path.join(PLUGIN_DIR, 'TodayWidgetRenderer.kt');
-const MODULE_SOURCE = path.join(PLUGIN_DIR, 'BrieflyWidgetModule.kt');
 
 const KOTLIN_TARGET = 'app/src/main/java/com/briefly/mobile/TodayWidgetProvider.kt';
 const LAYOUT_TARGET = 'app/src/main/res/layout/today_widget.xml';
 const XML_INFO_TARGET = 'app/src/main/res/xml/today_widget_info.xml';
-const RENDERER_TARGET = 'app/src/main/java/com/briefly/mobile/TodayWidgetRenderer.kt';
-const MODULE_TARGET = 'app/src/main/java/com/briefly/mobile/BrieflyWidgetModule.kt';
 
 const withTodayWidget = (config) => {
   // 1. Copy Kotlin + XML files via withDangerousMod
@@ -37,11 +38,9 @@ const withTodayWidget = (config) => {
       const androidRoot = config.modRequest.platformProjectRoot;
 
       const copies = [
-        [KOTLIN_SOURCE, KOTLIN_TARGET, 'Kotlin'],
+        [KOTLIN_SOURCE, KOTLIN_TARGET, 'Provider'],
         [LAYOUT_SOURCE, LAYOUT_TARGET, 'layout'],
         [XML_INFO_SOURCE, XML_INFO_TARGET, 'info XML'],
-        [RENDERER_SOURCE, RENDERER_TARGET, 'renderer'],
-        [MODULE_SOURCE, MODULE_TARGET, 'module'],
       ];
 
       for (const [source, relativeTarget, label] of copies) {

@@ -1,38 +1,23 @@
 /**
  * BrieflyWidgetService — JS bridge to Android native widget refresh.
  *
- * Calls BrieflyWidgetModule.updateTodayWidget() via Expo Modules API
- * to force an immediate widget update after a cache write.
- * Safe no-op on non-Android or if module unavailable.
+ * Imports the local briefly-widget Expo module which exposes
+ * updateTodayWidget(). Safe no-op on non-Android.
  *
  * PM-10D.3
  */
 
 import { Platform } from 'react-native';
-import { requireOptionalNativeModule } from 'expo-modules-core';
-
-type BrieflyWidgetNative = {
-    updateTodayWidget?: () => Promise<void>;
-};
+import { updateTodayWidget as nativeUpdateTodayWidget } from '../../modules/briefly-widget/src';
 
 export async function refreshTodayWidget(): Promise<void> {
     if (Platform.OS !== 'android') return;
 
     try {
-        const mod = requireOptionalNativeModule<BrieflyWidgetNative>('BrieflyWidget');
-
-        if (!mod?.updateTodayWidget) {
-            if (__DEV__) {
-                console.log('[BrieflyWidgetService] native module unavailable');
-            }
-            return;
-        }
-
+        await nativeUpdateTodayWidget();
         if (__DEV__) {
-            console.log('[BrieflyWidgetService] requested widget refresh');
+            console.log('[BrieflyWidgetService] widget refresh requested');
         }
-
-        await mod.updateTodayWidget();
     } catch {
         if (__DEV__) {
             console.log('[BrieflyWidgetService] widget refresh failed');

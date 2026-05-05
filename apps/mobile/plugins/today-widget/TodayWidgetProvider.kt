@@ -7,9 +7,8 @@ import android.appwidget.AppWidgetProvider
 /**
  * TodayWidgetProvider — Android AppWidget for Briefly Today dashboard.
  *
- * Delegates all RemoteViews building to TodayWidgetRenderer to avoid
- * duplication between the provider (system-triggered updates) and
- * the Expo module (JS-triggered immediate refresh).
+ * Delegates RemoteViews building to TodayWidgetRenderer in the
+ * briefly-widget Expo module (com.briefly.mobile.widget).
  *
  * PM-10D.3
  */
@@ -21,7 +20,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         for (appWidgetId in appWidgetIds) {
-            val views = TodayWidgetRenderer.buildRemoteViews(context)
+            val views = com.briefly.mobile.widget.TodayWidgetRenderer.buildRemoteViews(context)
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
     }

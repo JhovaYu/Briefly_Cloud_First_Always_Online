@@ -1,0 +1,6 @@
+{
+  "name": "briefly-widget",
+  "version": "1.0.0",
+  "description": "Android widget refresh module for Briefly",
+  "main": "src/index.ts"
+}
