@@ -113,7 +113,7 @@ export default function ScheduleScreen() {
     const router = useRouter();
     const { workspaceId: workspaceIdParam } = useLocalSearchParams<{ workspaceId?: string }>();
     const { loading: authLoading, getAccessToken } = useAuth();
-    const { activeWorkspaceId } = useActiveWorkspace();
+    const { activeWorkspaceId, activeWorkspaceName: workspaceName } = useActiveWorkspace();
 
     const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
     const [sections, setSections] = useState<Section[]>([]);
@@ -165,7 +165,7 @@ export default function ScheduleScreen() {
         } finally {
             setLoading(false);
         }
-    }, [getAccessToken, workspaceIdParam, buildSections]);
+    }, [getAccessToken, workspaceIdParam, activeWorkspaceId, buildSections]);
 
     useEffect(() => {
         if (authLoading) return;
@@ -323,7 +323,7 @@ export default function ScheduleScreen() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                     <Text style={styles.backBtnText}>←</Text>
                 </TouchableOpacity>
-                <Text style={styles.title}>Horarios</Text>
+                <Text style={styles.title}>Horarios{workspaceName ? ` · ${workspaceName}` : ''}</Text>
                 <TouchableOpacity onPress={loadBlocks} style={styles.refreshBtn} disabled={loading}>
                     {loading ? (
                         <ActivityIndicator color="#aeb4ff" size="small" />
