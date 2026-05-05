@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -41,11 +42,12 @@
         android:maxLines="1" />
 
     <!-- Divider -->
-    <View
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="#333"
-        android:layout_marginVertical="8dp" />
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
 
     <!-- Tasks (up to 3) -->
     <TextView
@@ -82,11 +84,12 @@
         android:visibility="gone" />
 
     <!-- Divider -->
-    <View
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="#333"
-        android:layout_marginVertical="8dp" />
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
 
     <!-- Next schedule block -->
     <TextView

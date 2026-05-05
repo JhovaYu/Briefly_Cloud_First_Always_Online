@@ -5,7 +5,7 @@
  * el layout XML y el appwidget-info XML en el proyecto Android
  * generado por prebuild.
  *
- * PM-10D.2: Plugin idempotente — puede correr varias veces sin duplicar.
+ * PM-10D.2 hotfix: package com.briefly.mobile, exported=true
  */
 
 const {
@@ -15,11 +15,12 @@ const {
 const path = require('path');
 const fs = require('fs');
 
-const KOTLIN_SOURCE = path.join(__dirname, 'TodayWidgetProvider.kt');
-const LAYOUT_SOURCE = path.join(__dirname, 'res', 'layout', 'today_widget.xml');
-const XML_INFO_SOURCE = path.join(__dirname, 'res', 'xml', 'today_widget_info.xml');
+const PLUGIN_DIR = path.join(__dirname, 'today-widget');
+const KOTLIN_SOURCE = path.join(PLUGIN_DIR, 'TodayWidgetProvider.kt');
+const LAYOUT_SOURCE = path.join(PLUGIN_DIR, 'res', 'layout', 'today_widget.xml');
+const XML_INFO_SOURCE = path.join(PLUGIN_DIR, 'res', 'xml', 'today_widget_info.xml');
 
-const KOTLIN_TARGET = 'app/src/main/java/com/briefly/widget/TodayWidgetProvider.kt';
+const KOTLIN_TARGET = 'app/src/main/java/com/briefly/mobile/TodayWidgetProvider.kt';
 const LAYOUT_TARGET = 'app/src/main/res/layout/today_widget.xml';
 const XML_INFO_TARGET = 'app/src/main/res/xml/today_widget_info.xml';
 
@@ -74,7 +75,7 @@ const withTodayWidget = (config) => {
     // Check if receiver already registered (idempotent guard)
     const existingReceivers = appElement['receiver'] ?? [];
     const alreadyRegistered = existingReceivers.some(
-      (r) => r.$?.['android:name'] === 'com.briefly.widget.TodayWidgetProvider'
+      (r) => r.$?.['android:name'] === 'com.briefly.mobile.TodayWidgetProvider'
     );
     if (alreadyRegistered) {
       console.log('[withTodayWidget] TodayWidgetProvider already registered, skipping');
@@ -84,8 +85,8 @@ const withTodayWidget = (config) => {
     // Build the receiver element
     const receiverElement = {
       $: {
-        'android:name': 'com.briefly.widget.TodayWidgetProvider',
-        'android:exported': 'false',
+        'android:name': 'com.briefly.mobile.TodayWidgetProvider',
+        'android:exported': 'true',
       },
       'intent-filter': [
         {
