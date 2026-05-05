@@ -16,8 +16,11 @@ class BrieflyWidgetModule : Module() {
         Name("BrieflyWidget")
 
         AsyncFunction("updateTodayWidget") {
-            val context = appContext.reactContext ?: return@AsyncFunction
-            TodayWidgetRenderer.updateAll(context)
+            val context = appContext.reactContext
+            if (context != null) {
+                TodayWidgetRenderer.updateAll(context)
+            }
+            null
         }
     }
 }
