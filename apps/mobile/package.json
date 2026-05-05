@@ -11,17 +11,11 @@
     "build:android": "expo prebuild --platform android && cd android && ./gradlew assembleDebug",
     "prebuild": "expo prebuild --platform android"
   },
-  "expo": {
-    "autolinking": {
-        "nativeModulesDir": "./modules"
-    }
-},
-"dependencies": {
+  "dependencies": {
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-query": "^5.100.9",
     "@tuxnotas/shared": "*",
-    "briefly-widget": "file:./modules/briefly-widget",
     "buffer": "^5.7.1",
     "event-target-shim": "^6.0.2",
     "expo": "~54.0.33",
