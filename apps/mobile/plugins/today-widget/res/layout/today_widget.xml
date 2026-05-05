@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#1a1a2e">
+
+    <!-- Header: workspace + date -->
+    <TextView
+        android:id="@+id/widget_workspace"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Workspace"
+        android:textColor="#aeb4ff"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/widget_date"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Fecha"
+        android:textColor="#666"
+        android:textSize="10sp"
+        android:layout_marginBottom="8dp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Task count + next block -->
+    <TextView
+        android:id="@+id/widget_pending_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0 tareas pendientes"
+        android:textColor="#ccc"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:maxLines="1" />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#333"
+        android:layout_marginVertical="8dp" />
+
+    <!-- Tasks (up to 3) -->
+    <TextView
+        android:id="@+id/widget_task_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#ddd"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_task_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#ddd"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_task_3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#ddd"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone" />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#333"
+        android:layout_marginVertical="8dp" />
+
+    <!-- Next schedule block -->
+    <TextView
+        android:id="@+id/widget_next_block"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#888"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Empty state message -->
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#4ade80"
+        android:textSize="13sp"
+        android:visibility="gone"
+        android:gravity="center" />
+
+    <!-- Stale indicator -->
+    <TextView
+        android:id="@+id/widget_stale"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚠ Datos desactualizados"
+        android:textColor="#f59e0b"
+        android:textSize="10sp"
+        android:visibility="gone"
+        android:layout_marginTop="4dp" />
+
+</LinearLayout>

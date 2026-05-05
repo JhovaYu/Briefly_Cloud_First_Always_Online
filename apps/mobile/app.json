@@ -38,7 +38,8 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
         }
       ],
-      "./plugins/withNetworkSecurityConfig"
+      "./plugins/withNetworkSecurityConfig",
+      "./plugins/withTodayWidget"
     ]
   }
 }
