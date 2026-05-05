@@ -493,6 +493,123 @@ return null → useTasks/useSchedule disabled (enabled: false)
 
 **Próximo paso:** PM-10C — Join workspace / membership A→B.
 
+### PM-10C — Mobile Workspace Join/Create + A→B Membership (PASS)
+**Alcance:** `apps/mobile` + `apps/backend/workspace-service` — join por UUID, create workspace, set activo, aislamiento de datos por workspace
+**Resultado:** PASS
+
+**Commits registrados:**
+- `45e01b4` feat(workspace): add idempotent join endpoint
+- `4cb8fca` feat(mobile): add workspace join and create actions
+- `b64b88c` fix(mobile): handle flattened join workspace response
+- `e3eeb76` fix(mobile,schedule): align active workspace tasks and schedule creator
+- `1ff30aa` fix(mobile): reload schedule when active workspace changes
+- `74424b9` fix(mobile): align workspace CRUD with active workspace
+- `5095554` fix(collab): restore CRDT websocket disconnect handler
+- `d193d0a` fix(collab): close CRDT websocket on invalid ticket
+- `21bee32` fix(desktop): make cloud websocket connect lifecycle idempotent
+- `0c47650` docs: record PM-08D cloud workspace creation pass
+- `f83e061` feat(desktop): create cloud workspaces from dashboard
+
+**Backend — Join endpoint:**
+
+```
+POST /api/workspace/workspaces/{workspace_id}/join
+Authorization: Bearer <JWT>
+```
+
+| Respuesta | body | Significado |
+|-----------|------|-------------|
+| 200 | `{ "workspace": {...}, "already_member": false }` | Join nuevo — workspace creado |
+| 200 | `{ "workspace": {...}, "already_member": true }` | Ya era miembro — idempotente |
+| 404 | — | Workspace no existe |
+| 401 | — | JWT inválido o expirado |
+
+**Contrato de respuesta:**
+```python
+class JoinWorkspaceResponse(BaseModel):
+    workspace: WorkspaceResponse   # nested — NO flat
+    already_member: bool
+```
+
+**QA A→B membership flow:**
+1. A crea workspace → queda como owner
+2. A copia UUID del workspace
+3. B entra a Workspaces → pega UUID → Unirse
+4. B recibe success (sin error)
+5. B ve workspace en su lista
+6. B accede a Tasks/Schedule del workspace joined
+7. A ve a B como miembro (lectura futura via membership)
+
+**Mobile — funcionalidades implementadas:**
+
+| Feature | Archivo | Detalle |
+|---------|---------|---------|
+| Join por UUID | `workspaces.tsx` `handleJoinWorkspace` | `joinWorkspaceWithAuth(code)` → `result.workspace.id` → `setActiveWorkspace` |
+| Create workspace | `workspaces.tsx` `handleCreateWorkspace` | `createWorkspaceWithAuth(name)` → activa automáticamente |
+| Active workspace visible | `workspaces.tsx` | Badge "Activo" + botón "Usar en Hoy" por item |
+| Join feedback | `workspaces.tsx` | Error 404 "Workspace no encontrado", error genérico si falla |
+| Active workspace en Tasks | `tasks.tsx` | `useActiveWorkspace()` + `activeWorkspaceId` en deps `useCallback` |
+| Active workspace en Schedule | `schedule.tsx` | `useActiveWorkspace()` + `activeWorkspaceId` en deps `useCallback` |
+| due_date local en tasks | `tasks.tsx` `handleCreate` | `due_date: \`${todayDate}T12:00:00\`` — fecha local del dispositivo |
+
+**Fixes críticos aplicados durante PM-10C:**
+
+| # | Bug | Fix | Archivo |
+|---|-----|-----|---------|
+| 1 | Join response flattened — `result.id` undefined | `joinWorkspaceWithAuth` return type restaurado a nested `{ workspace, already_member }` | `workspaceClient.ts` |
+| 2 | Join success silencioso — no feedback UX | Join ahora usa `result.workspace.id` + `setActiveWorkspace` + `loadWorkspaces()` | `workspaces.tsx` L99 |
+| 3 | Tasks stale al cambiar workspace activo | `loadTasks` deps: `[getAccessToken, workspaceIdParam, activeWorkspaceId]` | `tasks.tsx` L86 |
+| 4 | Tasks título sin indicador de workspace | Título: `Tareas · {workspaceName}` | `tasks.tsx` L222 |
+| 5 | due_date faltante — task no aparece en Today | `handleCreate` envía `due_date: \`${todayDate}T12:00:00\`` | `tasks.tsx` L139 |
+| 6 | Schedule 500 — `created_by` UUID parse fail | Repository pasa `block.created_by` (str) directo — SQLAlchemy convierte implícitamente | `postgres_schedule_repository.py` L80 |
+| 7 | Schedule 500 — `ScheduleBlock` not defined | Import agregado: `from app.domain.schedule_block import ScheduleBlock` | `routes.py` L15 |
+| 8 | Schedule stale al cambiar workspace | `loadBlocks` deps: `[getAccessToken, workspaceIdParam, activeWorkspaceId, buildSections]` | `schedule.tsx` L168 |
+| 9 | Schedule título sin indicador de workspace | Título: `Horarios · {workspaceName}` | `schedule.tsx` L326 |
+
+**QA Android — validación PM-10C:**
+
+| # | Test | Resultado |
+|---|------|-----------|
+| 1 | Join UUID válido — no error + queda activo | PASS |
+| 2 | Join UUID inexistente — "Workspace no encontrado" | PASS |
+| 3 | Tasks no cruza datos entre workspaces | PASS |
+| 4 | Nueva task aparece en Today | PASS |
+| 5 | Schedule create — no 500 | PASS |
+| 6 | Schedule no cruza bloques entre workspaces | PASS |
+| 7 | schedule-service health 200 | PASS |
+| 8 | schedule-service logs sin Traceback | PASS |
+
+**Contrato de Today (no es backlog):**
+
+```
+Today muestra:
+  - tasks con due_date = fecha local de hoy (YYYY-MM-DD)
+  - schedule blocks cuyo day_of_week = día de la semana de hoy (0=Lunes ... 6=Domingo)
+
+Today NO muestra:
+  - tasks sin due_date (filtradas por diseño en backend)
+  - tasks con due_date de otro día
+  - schedule blocks de otros días de la semana
+
+Deuda no bloqueante:
+  - Tasks creadas antes de PM-10C pueden no tener due_date → no aparecen en Today
+  - Backfill opcional para datos demo
+```
+
+**Deuda PM-10C / restante:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🟡 MEDIO | Join success feedback — Toast/snackbar que confirme "Te uniste a {nombre}" |
+| 🔵 BAJO | `already_member=true` — diferenciarlo en UI (ya eras miembro vs. unión nueva) |
+| 🔵 BAJO | Indicador visual mejorado de workspace activo en Today (nombre + color) |
+| 🔵 BAJO | `safeJson` legacy / factory cleanup en `workspaceClient.ts` — no se usa en producción |
+| 🔵 BAJO | Backfill demo: tasks antiguas sin due_date setear fecha arbitraria |
+| 🔴 ALTA | invite tokens / permisos finos PM-11 (membresía, roles owner/member) |
+| 🔴 ALTA | Widgets Android — pendientes según CLAUDE.md original |
+
+**Próximo paso:** PM-11 — Invite tokens + permisos.
+
 ### PM-08B Deuda y caveats
 
 ALTO:
