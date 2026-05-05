@@ -6,7 +6,7 @@
  * Uses existing clients only; no new endpoints, no backend changes.
  */
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -18,6 +18,10 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTodaySummary } from '../src/hooks/useTodaySummary';
+import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
+import { writeTodayCache } from '../src/services/TodayCacheService';
+import { getLocalDateString } from '../src/utils/dateUtils';
+import type { TodayData } from '../src/types/TodayData';
 
 const BACKEND_BASE =
     (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://briefly.ddns.net');
@@ -163,6 +167,83 @@ export default function TodayScreen() {
         topTasks,
         workspaceName,
     } = useTodaySummary();
+    const { activeWorkspaceId: workspaceId } = useActiveWorkspace();
+
+    const lastPayloadRef = useRef<string | null>(null);
+    const lastWriteMsRef = useRef<number>(0);
+
+    useEffect(() => {
+        if (loading || error) return;
+
+        const todayDate = getLocalDateString();
+        const dateLabel = new Intl.DateTimeFormat('es-ES', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+        }).format(new Date());
+
+        const topTasksSlice = (topTasks ?? []).slice(0, 3).map(t => ({
+            id: t.id,
+            text: t.text.length > 80 ? t.text.slice(0, 80) + '…' : t.text,
+            priority: t.priority ?? null,
+        }));
+
+        const nextBlock = nextScheduleBlock
+            ? {
+                  id: nextScheduleBlock.id,
+                  title: nextScheduleBlock.title,
+                  start_time: nextScheduleBlock.start_time,
+                  duration_minutes: nextScheduleBlock.duration_minutes ?? null,
+                  location: nextScheduleBlock.location
+                      ? nextScheduleBlock.location.length > 40
+                          ? nextScheduleBlock.location.slice(0, 40) + '…'
+                          : nextScheduleBlock.location
+                      : null,
+              }
+            : null;
+
+        const emptyStateMessage =
+            workspaceId === null ? 'Sin workspace activo'
+            : pendingTasksCount === 0 && nextBlock === null ? 'Todo en orden ✓'
+            : null;
+
+        const data: TodayData = {
+            schemaVersion: 1,
+            workspaceId,
+            workspaceName: workspaceName ?? null,
+            dateLabel: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
+            date: todayDate,
+            pendingTasksCount: pendingTasksCount ?? 0,
+            topTasks: topTasksSlice,
+            nextScheduleBlock: nextBlock,
+            stale: false,
+            emptyStateMessage,
+            updatedAt: new Date().toISOString(),
+        };
+
+        // Build a serializable base for comparison (without updatedAt)
+        const base = JSON.stringify({
+            schemaVersion: data.schemaVersion,
+            workspaceId: data.workspaceId,
+            workspaceName: data.workspaceName,
+            date: data.date,
+            pendingTasksCount: data.pendingTasksCount,
+            topTasks: data.topTasks,
+            nextScheduleBlock: data.nextScheduleBlock,
+            stale: data.stale,
+            emptyStateMessage: data.emptyStateMessage,
+        });
+
+        const now = Date.now();
+        if (base === lastPayloadRef.current && now - lastWriteMsRef.current < 30_000) {
+            return;
+        }
+
+        lastPayloadRef.current = base;
+        lastWriteMsRef.current = now;
+
+        writeTodayCache(data);
+    }, [loading, error, workspaceName, workspaceId, pendingTasksCount, topTasks, nextScheduleBlock]);
 
     if (loading) {
         return (
