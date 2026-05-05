@@ -9,6 +9,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import type { TodayData } from '../types/TodayData';
+import { refreshTodayWidget } from './BrieflyWidgetService';
 
 export const CACHE_FILE_NAME = 'today_widget_cache.json';
 
@@ -55,6 +56,7 @@ export async function writeTodayCache(data: TodayData): Promise<void> {
         await FileSystem.moveAsync({ from: tmpUri, to: finalUri });
 
         console.log(`TodayCache written: ${getTodayCacheAdbPath()} (${bytes} bytes)`);
+        await refreshTodayWidget();
     } catch (err) {
         console.warn('[TodayCacheService] writeTodayCache failed:', String(err));
     }

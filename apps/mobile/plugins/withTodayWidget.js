@@ -5,7 +5,7 @@
  * el layout XML y el appwidget-info XML en el proyecto Android
  * generado por prebuild.
  *
- * PM-10D.2 hotfix: package com.briefly.mobile, exported=true
+ * PM-10D.3: agrega TodayWidgetRenderer + BrieflyWidgetModule
  */
 
 const {
@@ -16,13 +16,18 @@ const path = require('path');
 const fs = require('fs');
 
 const PLUGIN_DIR = path.join(__dirname, 'today-widget');
+
 const KOTLIN_SOURCE = path.join(PLUGIN_DIR, 'TodayWidgetProvider.kt');
 const LAYOUT_SOURCE = path.join(PLUGIN_DIR, 'res', 'layout', 'today_widget.xml');
 const XML_INFO_SOURCE = path.join(PLUGIN_DIR, 'res', 'xml', 'today_widget_info.xml');
+const RENDERER_SOURCE = path.join(PLUGIN_DIR, 'TodayWidgetRenderer.kt');
+const MODULE_SOURCE = path.join(PLUGIN_DIR, 'BrieflyWidgetModule.kt');
 
 const KOTLIN_TARGET = 'app/src/main/java/com/briefly/mobile/TodayWidgetProvider.kt';
 const LAYOUT_TARGET = 'app/src/main/res/layout/today_widget.xml';
 const XML_INFO_TARGET = 'app/src/main/res/xml/today_widget_info.xml';
+const RENDERER_TARGET = 'app/src/main/java/com/briefly/mobile/TodayWidgetRenderer.kt';
+const MODULE_TARGET = 'app/src/main/java/com/briefly/mobile/BrieflyWidgetModule.kt';
 
 const withTodayWidget = (config) => {
   // 1. Copy Kotlin + XML files via withDangerousMod
@@ -31,32 +36,23 @@ const withTodayWidget = (config) => {
     async (config) => {
       const androidRoot = config.modRequest.platformProjectRoot;
 
-      // Copy Kotlin source
-      const kotlinTarget = path.join(androidRoot, KOTLIN_TARGET);
-      const kotlinDir = path.dirname(kotlinTarget);
-      if (!fs.existsSync(kotlinDir)) {
-        fs.mkdirSync(kotlinDir, { recursive: true });
-      }
-      fs.copyFileSync(KOTLIN_SOURCE, kotlinTarget);
-      console.log(`[withTodayWidget] Copied Kotlin → ${kotlinTarget}`);
+      const copies = [
+        [KOTLIN_SOURCE, KOTLIN_TARGET, 'Kotlin'],
+        [LAYOUT_SOURCE, LAYOUT_TARGET, 'layout'],
+        [XML_INFO_SOURCE, XML_INFO_TARGET, 'info XML'],
+        [RENDERER_SOURCE, RENDERER_TARGET, 'renderer'],
+        [MODULE_SOURCE, MODULE_TARGET, 'module'],
+      ];
 
-      // Copy layout XML
-      const layoutTarget = path.join(androidRoot, LAYOUT_TARGET);
-      const layoutDir = path.dirname(layoutTarget);
-      if (!fs.existsSync(layoutDir)) {
-        fs.mkdirSync(layoutDir, { recursive: true });
+      for (const [source, relativeTarget, label] of copies) {
+        const target = path.join(androidRoot, relativeTarget);
+        const dir = path.dirname(target);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.copyFileSync(source, target);
+        console.log(`[withTodayWidget] Copied ${label} → ${target}`);
       }
-      fs.copyFileSync(LAYOUT_SOURCE, layoutTarget);
-      console.log(`[withTodayWidget] Copied layout → ${layoutTarget}`);
-
-      // Copy appwidget-info XML
-      const xmlTarget = path.join(androidRoot, XML_INFO_TARGET);
-      const xmlDir = path.dirname(xmlTarget);
-      if (!fs.existsSync(xmlDir)) {
-        fs.mkdirSync(xmlDir, { recursive: true });
-      }
-      fs.copyFileSync(XML_INFO_SOURCE, xmlTarget);
-      console.log(`[withTodayWidget] Copied info XML → ${xmlTarget}`);
 
       return config;
     },
