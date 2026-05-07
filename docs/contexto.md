@@ -610,6 +610,125 @@ Deuda no bloqueante:
 
 **Próximo paso:** PM-11 — Invite tokens + permisos.
 
+### PM-10D — Android Today Widget (PASS con deuda post-MVP)
+
+#### PM-10D.1 — TodayData Cache Writer (PASS)
+**Alcance:** `apps/mobile` — serializar TodayData a JSON para consumo del widget Android
+**Resultado:** PASS
+
+**Archivos creados:**
+
+| Archivo | Propósito |
+|---------|-----------|
+| `src/types/TodayData.ts` | Tipo compartido (sin tokens, sin secrets) |
+| `src/services/TodayCacheService.ts` | Escritor atómico: write→.tmp→delete final→move |
+| `app/today.tsx` | useEffect que llama `writeTodayCache` al cambiar datos |
+
+**Diseño clave:**
+- Atomic write: `writeAsStringAsync(.tmp)` → `deleteAsync(final, {idempotent:true})` → `moveAsync(.tmp, final)`
+- Debounce 30s vía `useRef` con payload serializado (sin `updatedAt`)
+- `workspaceId` real via `useActiveWorkspace()`, no dummy null
+- Silently skips on error — widget cae a `stale=true`
+
+**Hotfix aplicado:**
+- Módulo inválido: `expo-file-system/build/legacy` → `expo-file-system/legacy`
+- WorkspaceId siempre null → agregado `useActiveWorkspace()`
+
+**QA validación:**
+```bash
+adb exec-out run-as com.briefly.mobile cat files/today_widget_cache.json
+# → JSON válido con schemaVersion, workspaceName, dateLabel, pendingTasksCount, topTasks, nextScheduleBlock, stale, updatedAt
+# Sin tokens, sin emails, sin user IDs
+```
+
+**Criterios cumplidos:**
+- Sin tokens, emails, user IDs en cache
+- tsc `--noEmit`: 0 errors
+- Widget puede leer el archivo (mismo sandbox)
+
+#### PM-10D.2 — Android AppWidgetProvider Shell (PASS)
+**Alcance:** `plugins/today-widget/` — Kotlin provider + config plugin + layout
+**Resultado:** PASS
+
+**Archivos creados:**
+
+| Archivo | Propósito |
+|---------|-----------|
+| `plugins/today-widget/TodayWidgetProvider.kt` | AppWidgetProvider — self-contained, usa R.id.*, populateViews/setEmptyState |
+| `plugins/today-widget/res/layout/today_widget.xml` | RemoteViews layout con widget_root, dividers como TextView |
+| `plugins/today-widget/res/xml/today_widget_info.xml` | AppWidgetProvider config: updatePeriodMillis=1800000, minWidth=250dp |
+| `plugins/withTodayWidget.js` | Expo config plugin — copia provider+layout+xml al android/ generado |
+
+**Diseño clave:**
+- Provider self-contained: `populateViews`, `setEmptyState`, `PendingIntent` todo en la misma clase
+- `R.id.widget_root` + `setOnClickPendingIntent(R.id.widget_root, pendingIntent)` — tap abre app
+- `updatePeriodMillis=1800000` (30 min) — refresh periódico por el sistema
+- Resolución dinámica de IDs: `R.id.widget_*` (compilados en tiempo de build)
+- Package `com.briefly.mobile`, receiver `com.briefly.mobile.TodayWidgetProvider`, exported=true
+- No network, no tokens, no logs sensibles
+
+**QA validación:**
+```bash
+# Prebuild + build
+npx expo prebuild --platform android
+npx expo run:android
+
+# Widget aparece en launcher (buscar "Briefly")
+adb shell dumpsys package com.briefly.mobile | findstr TodayWidgetProvider
+# → receiver registrado
+
+adb shell dumpsys appwidget | findstr Briefly
+# → provider reconocido
+
+# Tap widget abre app
+# Widget muestra workspace, fecha, count, tasks, next block
+```
+
+**Criterios cumplidos:**
+- Widget visible en launcher de Android
+- Tap abre MainActivity
+- Lee `today_widget_cache.json` del filesDir
+- `updatePeriodMillis=1800000` activo
+- No crash, no FC
+- tsc `--noEmit`: 0 errors
+
+#### PM-10D.3 — Immediate Widget Refresh (STOP / DEUDA POST-MVP)
+**Alcance:** refresh inmediato del widget cuando `writeTodayCache` escribe nuevo JSON
+**Resultado:** STOP — revertido para preservar build verde
+
+**Intentado:**
+- Módulo Expo local `modules/briefly-widget/` con `BrieflyWidgetModule` + `TodayWidgetRenderer`
+- `requireOptionalNativeModule('BrieflyWidget')` en JS bridge
+- `AppWidgetManager.updateAppWidget()` desde Kotlin
+
+**Detenido por:**
+- `expo-modules-autolinking search` detecta el módulo, pero Gradle no lo compila
+- Falta estructura completa de módulo Expo local: `android/build.gradle`, `AndroidManifest.xml`, autolinking de Gradle
+- Build fallaba con `Unresolved reference 'widget'` en `TodayWidgetProvider`
+
+**Revertido:**
+- `BrieflyWidgetService.ts` restaurado (sin llamada a refresh)
+- `TodayCacheService.ts` sin `refreshTodayWidget()`
+- `package.json` sin `briefly-widget` dependency
+- `withTodayWidget.js` sin copia de module/renderer
+
+**Deuda post-MVP:**
+| Severidad | Elemento | Solución sugerida |
+|-----------|----------|-------------------|
+| 🟡 MEDIO | Refresh inmediato JS→native | Implementar `Expo Module` local con estructura Gradle completa, o usar `AppWidgetManager.updateAppWidget(ids, views)` vía BroadcastReceiver |
+| 🟡 MEDIO | Stale flag siempre `false` | En `today.tsx` marcar `stale=true` cuando la cache supere ~30min sin actualizarse |
+
+**Riesgos residuales PM-10D:**
+
+| Severidad | Hallazgo |
+|-----------|----------|
+| 🔵 BAJO | Widget no refresca inmediatamente al crear tarea — usuario debe esperar hasta 30min (updatePeriodMillis) o remover y añadir widget |
+| 🔵 BAJO | Layout strings hardcodeadas en español en XML — aceptable para MVP |
+
+**Próximo paso recomendado:**
+- Proceder a APK/QA funcional con PM-10D.2 PASS
+- PM-10D.3 immediate refresh como deuda post-MVP cuando se valide estructura completa de Expo Module local
+
 ### PM-08B Deuda y caveats
 
 ALTO:
