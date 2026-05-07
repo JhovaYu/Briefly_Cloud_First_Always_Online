@@ -11,37 +11,53 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/services/AuthContext';
 import { useActiveWorkspace } from '../src/hooks/useActiveWorkspace';
 import { queryClient } from '../src/lib/queryClient';
 import { joinWorkspaceWithAuth, createWorkspaceWithAuth } from '../src/services/workspaceClient';
 import type { Workspace } from '@tuxnotas/shared/src/domain/Entities';
+import { useTheme } from '../src/hooks/useTheme';
+import { Ionicons } from '@expo/vector-icons';
+import { Card } from '../src/components/ui/Card';
+import { CreateModal } from '../src/components/ui/CreateModal';
+import { BottomNav } from '../src/components/ui/BottomNav';
 
 function formatDate(isoString: string): string {
     try {
         const d = new Date(isoString);
-        return d.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
+        return d.toLocaleDateString('es-ES', { month: 'long', day: 'numeric' });
     } catch {
         return isoString;
     }
 }
 
+// Helper to assign a stable color/icon to a workspace based on its ID
+const getGroupVisuals = (id: string, theme: any) => {
+    const colors = [theme.groupColors.purple, theme.groupColors.green, theme.groupColors.yellow, theme.groupColors.blue, theme.groupColors.pink];
+    const icons = ['book', 'leaf', 'business', 'pencil', 'planet'] as const;
+    
+    // simple hash
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const index = Math.abs(hash) % colors.length;
+    return { color: colors[index], icon: icons[index] };
+};
+
 export default function WorkspacesScreen() {
     const router = useRouter();
+    const theme = useTheme();
     const { loading: authLoading, getAccessToken } = useAuth();
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const { activeWorkspaceId, setActiveWorkspace } = useActiveWorkspace();
-
-    // ── Join/Create section state ───────────────────────────────────────────
-    const [joinCode, setJoinCode] = useState('');
-    const [createName, setCreateName] = useState('');
-    const [actionLoading, setActionLoading] = useState(false);
-    const [actionError, setActionError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [modalVisible, setModalVisible] = useState(false);
 
     const loadWorkspaces = useCallback(async () => {
         const token = getAccessToken();
@@ -49,12 +65,23 @@ export default function WorkspacesScreen() {
 
         setLoading(true);
         setError(null);
+        let timedOut = false;
+        const timeout = setTimeout(() => {
+            timedOut = true;
+            setLoading(false);
+            setError('Error de conexión');
+        }, 5000);
+
         try {
             const { fetchWorkspacesWithAuth } = await import('../src/services/workspaceClient');
             const fetched = await fetchWorkspacesWithAuth();
+            clearTimeout(timeout);
+            if (timedOut) return;
             setWorkspaces(fetched);
         } catch (err: any) {
-            setError(err?.message ?? 'Error cargando workspaces');
+            clearTimeout(timeout);
+            if (timedOut) return;
+            setError(err?.message ?? 'Error cargando grupos');
         } finally {
             setLoading(false);
         }
@@ -79,339 +106,166 @@ export default function WorkspacesScreen() {
     };
 
     const handleWorkspacePress = (workspace: Workspace) => {
+        setActiveWorkspace(workspace.id);
         router.push(`/workspace-detail?id=${encodeURIComponent(workspace.id)}`);
     };
 
-    const handleUseAsActive = (workspace: Workspace) => {
-        setActiveWorkspace(workspace.id);
+    const filteredWorkspaces = workspaces.filter(ws => 
+        ws.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const handleJoinWorkspace = async (code: string) => {
+        const result = await joinWorkspaceWithAuth(code);
+        await setActiveWorkspace(result.workspace.id);
+        await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+        await loadWorkspaces();
     };
 
-    // ── Join/Create handlers ───────────────────────────────────────────────
-
-    const handleJoinWorkspace = async () => {
-        const code = joinCode.trim();
-        if (!code) return;
-
-        setActionLoading(true);
-        setActionError(null);
-        try {
-            const result = await joinWorkspaceWithAuth(code);
-            await setActiveWorkspace(result.workspace.id);
-            await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-            setJoinCode('');
-            await loadWorkspaces();
-        } catch (err: any) {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes('404')) {
-                setActionError('Workspace no encontrado');
-            } else if (msg.includes('401') || msg.includes('403')) {
-                setActionError('Sesión no válida');
-            } else {
-                setActionError('Error al unirse al workspace');
-            }
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleCreateWorkspace = async () => {
-        const name = createName.trim();
-        if (!name) return;
-
-        setActionLoading(true);
-        setActionError(null);
-        try {
-            const ws = await createWorkspaceWithAuth(name);
-            await setActiveWorkspace(ws.id);
-            await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-            setCreateName('');
-            await loadWorkspaces();
-        } catch (err: any) {
-            setActionError(err?.message ?? 'Error al crear workspace');
-        } finally {
-            setActionLoading(false);
-        }
+    const handleCreateWorkspace = async (name: string) => {
+        const ws = await createWorkspaceWithAuth(name);
+        await setActiveWorkspace(ws.id);
+        await queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+        await loadWorkspaces();
     };
 
     const renderItem = ({ item }: { item: Workspace }) => {
         const isActive = item.id === activeWorkspaceId;
+        const visuals = getGroupVisuals(item.id, theme);
+        
         return (
-            <TouchableOpacity
-                style={styles.workspaceItem}
-                onPress={() => handleWorkspacePress(item)}
-                onLongPress={() => !isActive && setActiveWorkspace(item.id)}
-            >
-                <View style={styles.workspaceIcon}>
-                    <Text style={styles.workspaceIconText}>W</Text>
-                </View>
-                <View style={styles.workspaceInfo}>
-                    <Text style={styles.workspaceName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.workspaceDate}>{formatDate(item.created_at)}</Text>
-                </View>
-                {isActive ? (
-                    <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>Activo</Text>
+            <Card style={styles.workspaceItem} padding={16} variant="default">
+                <TouchableOpacity
+                    style={styles.workspaceTouchable}
+                    onPress={() => handleWorkspacePress(item)}
+                >
+                    <View style={[styles.workspaceIcon, { backgroundColor: `${visuals.color}26` }]}>
+                        <Ionicons name={visuals.icon as any} size={24} color={visuals.color} />
                     </View>
-                ) : (
-                    <TouchableOpacity
-                        style={styles.useActiveBtn}
-                        onPress={() => handleUseAsActive(item)}
-                    >
-                        <Text style={styles.useActiveBtnText}>Usar en Hoy</Text>
-                    </TouchableOpacity>
-                )}
-                <Text style={styles.workspaceArrow}>→</Text>
-            </TouchableOpacity>
+                    <View style={styles.workspaceInfo}>
+                        <Text style={[styles.workspaceName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+                        <Text style={[styles.workspaceDate, { color: theme.textMuted }]}>
+                            {/* Assuming documents count would go here, mock to 0 for MVP if not available */}
+                            0 hojas · Editada el {formatDate(item.created_at)}
+                        </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+                </TouchableOpacity>
+            </Card>
         );
     };
 
     if (authLoading) {
         return (
-            <View style={styles.centered}>
-                <ActivityIndicator color="#aeb4ff" size="large" />
+            <View style={[styles.centered, { backgroundColor: theme.background }]}>
+                <ActivityIndicator color={theme.primary} size="large" />
             </View>
         );
     }
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.background }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                    <Text style={styles.backBtnText}>←</Text>
+                <Text style={[styles.title, { color: theme.text }]}>Grupos</Text>
+                <TouchableOpacity onPress={() => setModalVisible(true)}>
+                    <Ionicons name="add" size={28} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={styles.title}>Workspaces</Text>
-                <View style={styles.placeholder} />
+            </View>
+
+            <View style={styles.searchContainer}>
+                <View style={[styles.searchBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                    <Ionicons name="search" size={20} color={theme.textMuted} />
+                    <TextInput
+                        style={[styles.searchInput, { color: theme.text }]}
+                        placeholder="Buscar grupo"
+                        placeholderTextColor={theme.textMuted}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                    />
+                </View>
             </View>
 
             {error && (
-                <View style={styles.errorBanner}>
-                    <Text style={styles.errorText}>{error}</Text>
+                <View style={[styles.errorBanner, { backgroundColor: 'rgba(255,69,58,0.1)', borderColor: theme.danger }]}>
+                    <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>
                     <TouchableOpacity onPress={() => setError(null)}>
-                        <Text style={styles.errorClose}>✕</Text>
+                        <Ionicons name="close" size={20} color={theme.danger} />
                     </TouchableOpacity>
                 </View>
             )}
 
-            {/* ── Join/Create Section ─────────────────────────────────────── */}
-            <View style={styles.joinSection}>
-                <View style={styles.joinRow}>
-                    <TextInput
-                        style={styles.joinInput}
-                        placeholder="Código UUID del workspace"
-                        placeholderTextColor="#555"
-                        value={joinCode}
-                        onChangeText={setJoinCode}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        editable={!actionLoading}
-                    />
-                    <TouchableOpacity
-                        style={[styles.joinBtn, (!joinCode.trim() || actionLoading) && styles.joinBtnDisabled]}
-                        onPress={handleJoinWorkspace}
-                        disabled={!joinCode.trim() || actionLoading}
-                    >
-                        {actionLoading ? (
-                            <ActivityIndicator color="#aeb4ff" size="small" />
-                        ) : (
-                            <Text style={styles.joinBtnText}>Unirse</Text>
-                        )}
-                    </TouchableOpacity>
-                </View>
-
-                <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>o</Text>
-                    <View style={styles.dividerLine} />
-                </View>
-
-                <View style={styles.joinRow}>
-                    <TextInput
-                        style={styles.createInput}
-                        placeholder="Nombre del nuevo workspace"
-                        placeholderTextColor="#555"
-                        value={createName}
-                        onChangeText={setCreateName}
-                        editable={!actionLoading}
-                    />
-                    <TouchableOpacity
-                        style={[styles.createBtn, (!createName.trim() || actionLoading) && styles.createBtnDisabled]}
-                        onPress={handleCreateWorkspace}
-                        disabled={!createName.trim() || actionLoading}
-                    >
-                        {actionLoading ? (
-                            <ActivityIndicator color="#fff" size="small" />
-                        ) : (
-                            <Text style={styles.createBtnText}>Crear</Text>
-                        )}
-                    </TouchableOpacity>
-                </View>
-
-                {actionError && (
-                    <Text style={styles.actionError}>{actionError}</Text>
-                )}
-            </View>
-
-            {loading && workspaces.length === 0 ? (
-                <View style={styles.centered}>
-                    <ActivityIndicator color="#aeb4ff" size="large" />
-                </View>
-            ) : workspaces.length === 0 && !error ? (
+            {error && workspaces.length === 0 ? (
                 <View style={styles.empty}>
-                    <Text style={styles.emptyText}>Sin workspaces</Text>
-                    <Text style={styles.emptySubtext}>Crea uno o únete a un workspace</Text>
+                    <Ionicons name="alert-circle-outline" size={48} color={theme.danger} style={{ marginBottom: 16 }} />
+                    <Text style={[styles.emptyText, { color: theme.text }]}>Error de conexión</Text>
+                    <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>No se pudieron cargar los grupos.</Text>
+                    <TouchableOpacity onPress={handleRefresh} style={{ marginTop: 12, padding: 8, backgroundColor: 'rgba(255,69,58,0.1)', borderRadius: 8 }}>
+                        <Text style={{ color: theme.danger, fontWeight: '600' }}>Reintentar</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : loading && workspaces.length === 0 ? (
+                <View style={styles.centered}>
+                    <ActivityIndicator color={theme.primary} size="large" />
+                </View>
+            ) : workspaces.length === 0 ? (
+                <View style={styles.empty}>
+                    <Ionicons name="folder-open-outline" size={48} color={theme.textMuted} style={{ marginBottom: 16 }} />
+                    <Text style={[styles.emptyText, { color: theme.text }]}>No tienes grupos</Text>
+                    <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>Crea uno nuevo usando el botón +</Text>
                 </View>
             ) : (
                 <FlatList
-                    data={workspaces}
+                    data={filteredWorkspaces}
                     keyExtractor={item => item.id}
                     renderItem={renderItem}
                     contentContainerStyle={styles.list}
                     showsVerticalScrollIndicator={false}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={handleRefresh}
-                            tintColor="#aeb4ff"
-                        />
-                    }
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />}
                 />
             )}
+
+            <TouchableOpacity 
+                style={[styles.fab, { backgroundColor: theme.primary }]}
+                onPress={() => setModalVisible(true)}
+            >
+                <Ionicons name="add" size={32} color="#fff" />
+            </TouchableOpacity>
+
+            <CreateModal 
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+                onCreateWorkspace={handleCreateWorkspace}
+                onJoinWorkspace={handleJoinWorkspace}
+            />
+            <BottomNav />
         </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#111' },
+    container: { flex: 1 },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: 60,
-        paddingHorizontal: 20,
-        paddingBottom: 16,
-    },
-    backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-    backBtnText: { color: '#aeb4ff', fontSize: 24 },
-    title: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
-    placeholder: { width: 40 },
-    errorBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#3b1010',
-        marginHorizontal: 16,
-        marginBottom: 12,
-        padding: 12,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ef4444',
-    },
-    errorText: { color: '#ef4444', fontSize: 13, flex: 1 },
-    errorClose: { color: '#ef4444', marginLeft: 8 },
-    // Join/Create section
-    joinSection: {
-        marginHorizontal: 16,
-        marginBottom: 16,
-        backgroundColor: '#1a1a1a',
-        borderRadius: 12,
-        padding: 14,
-        borderWidth: 1,
-        borderColor: '#252525',
-    },
-    joinRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-    joinInput: {
-        flex: 1,
-        backgroundColor: '#111',
-        color: '#ccc',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 14,
-        borderWidth: 1,
-        borderColor: '#333',
-    },
-    joinBtn: {
-        backgroundColor: '#252540',
-        borderRadius: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderWidth: 1,
-        borderColor: '#3a3a6a',
-    },
-    joinBtnDisabled: { opacity: 0.5 },
-    joinBtnText: { color: '#aeb4ff', fontSize: 14, fontWeight: '600' },
-    createInput: {
-        flex: 1,
-        backgroundColor: '#111',
-        color: '#ccc',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 14,
-        borderWidth: 1,
-        borderColor: '#333',
-    },
-    createBtn: {
-        backgroundColor: '#6872c6',
-        borderRadius: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-    },
-    createBtnDisabled: { opacity: 0.5 },
-    createBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-    dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 10 },
-    dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
-    dividerText: { color: '#555', fontSize: 12 },
-    actionError: { color: '#ef4444', fontSize: 12, marginTop: 8, textAlign: 'center' },
-    list: { paddingHorizontal: 16, paddingBottom: 32 },
-    workspaceItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#1a1a1a',
-        borderRadius: 10,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#252525',
-    },
-    workspaceIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 10,
-        backgroundColor: '#252540',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 14,
-    },
-    workspaceIconText: { color: '#aeb4ff', fontSize: 18, fontWeight: 'bold' },
+    
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, paddingHorizontal: 20, paddingBottom: 16 },
+    title: { fontSize: 32, fontWeight: '700' },
+    
+    searchContainer: { paddingHorizontal: 20, marginBottom: 16 },
+    searchBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, gap: 10 },
+    searchInput: { flex: 1, fontSize: 16 },
+    
+    errorBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 20, marginBottom: 16, padding: 12, borderRadius: 10, borderWidth: 1 },
+    errorText: { fontSize: 14, flex: 1 },
+    
+    list: { paddingHorizontal: 20, paddingBottom: 100 },
+    workspaceItem: { marginBottom: 12 },
+    workspaceTouchable: { flexDirection: 'row', alignItems: 'center' },
+    workspaceIcon: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
     workspaceInfo: { flex: 1 },
-    workspaceName: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 4 },
-    workspaceNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    activeBadge: {
-        backgroundColor: '#1a3a1a',
-        borderRadius: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderWidth: 1,
-        borderColor: '#2d6a2d',
-    },
-    activeBadgeText: { color: '#4ade80', fontSize: 10, fontWeight: '700' },
-    useActiveBtn: {
-        backgroundColor: '#252540',
-        borderRadius: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderWidth: 1,
-        borderColor: '#3a3a6a',
-    },
-    useActiveBtnText: { color: '#aeb4ff', fontSize: 11, fontWeight: '600' },
-    workspaceDate: { color: '#555', fontSize: 12 },
-    workspaceArrow: { color: '#555', fontSize: 18 },
-    empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    emptyText: { color: '#555', fontSize: 18, fontWeight: '600' },
-    emptySubtext: { color: '#444', fontSize: 13, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 },
+    workspaceName: { fontSize: 17, fontWeight: '600', marginBottom: 4 },
+    workspaceDate: { fontSize: 13 },
+    
+    empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
+    emptyText: { fontSize: 18, fontWeight: '600' },
+    emptySubtext: { fontSize: 14, marginTop: 6, textAlign: 'center' },
+    
+    fab: { position: 'absolute', bottom: 80, right: 20, width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
 });
