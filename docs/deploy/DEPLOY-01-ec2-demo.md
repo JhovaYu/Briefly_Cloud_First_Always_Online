@@ -121,16 +121,29 @@ cd apps/desktop
 npm install
 
 # Cloud demo build — relative URLs, works behind nginx proxy
-export VITE_PLANNING_BACKEND_ENABLED=true
-export VITE_PLANNING_SERVICE_URL=/api/planning
-export VITE_WORKSPACE_SERVICE_URL=/api/workspace
-export VITE_SUPABASE_URL=https://your-project.supabase.co
-export VITE_SUPABASE_ANON_KEY=your_anon_key_here
-
+# CRITICAL: VITE_COLLAB_USE_CLOUD_PROVIDER must be set at BUILD TIME (not runtime)
+VITE_COLLAB_USE_CLOUD_PROVIDER=true \
+VITE_PLANNING_BACKEND_ENABLED=true \
+VITE_PLANNING_SERVICE_URL=/api/planning \
+VITE_WORKSPACE_SERVICE_URL=/api/workspace \
+VITE_SCHEDULE_BACKEND_ENABLED=true \
+VITE_SCHEDULE_SERVICE_URL=/api/schedule \
+VITE_SUPABASE_URL=https://your-project.supabase.co \
+VITE_SUPABASE_ANON_KEY=your_anon_key_here \
+VITE_DEV_PROXY_TARGET=https://briefly.ddns.net \
+NODE_OPTIONS="--max-old-space-size=2048" \
 npm run build
 ```
 
 This produces `apps/desktop/dist/` — the Vite static build. The nginx Dockerfile copies it into the image at `/usr/share/nginx/html/`.
+
+### Deploy nginx to EC2
+
+```bash
+docker compose -f docker-compose.ec2.yml build nginx
+docker compose -f docker-compose.ec2.yml rm -sf nginx
+docker compose -f docker-compose.ec2.yml up -d nginx
+```
 
 ### 2. Transfer to EC2
 

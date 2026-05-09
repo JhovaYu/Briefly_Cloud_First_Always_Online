@@ -100,6 +100,18 @@ VITE_SIGNALING_URL=...  # WebSocket URL for y-webrtc peer discovery
 ```
 Copy `apps/desktop/.env.example` → `apps/desktop/.env`.
 
+### Production build for EC2
+
+**Critical:** `VITE_COLLAB_USE_CLOUD_PROVIDER=true` must be set at **build time** for desktop production.
+Vite embeds `VITE_*` vars at build time, not runtime:
+
+```bash
+cd apps/desktop
+VITE_COLLAB_USE_CLOUD_PROVIDER=true NODE_OPTIONS="--max-old-space-size=2048" npm run build
+```
+
+The built `dist/` is then copied into the `nginx` Docker image for EC2 serving.
+
 ## Microservices
 
 ### Express/TypeScript (existing)

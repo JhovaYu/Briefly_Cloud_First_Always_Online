@@ -28,7 +28,48 @@
 | **PM-06G** | Android Quick Actions + Today Dashboard | ✅ PM-06G.1 PASS (Today Dashboard), PM-06G.2 PASS (Quick Actions), PM-06G.3 pendiente |
 | **PM-06G.1** | Today Dashboard — screen con summary diario | ✅ PASS — `app/today.tsx` + `hooks/useTodaySummary.ts`, muestra próximo schedule block + tareas pendientes + quick actions |
 | **PM-06G.2** | Android Quick Actions (App Shortcuts) | ✅ PASS — expo-quick-actions@6.0.1, 3 acciones: Hoy→/today, Tareas→/tasks, Horario→/schedule. Sin android/ manual. |
-| **PM-06G.3** | Android Widget real | �.Future — Requiere react-native-android-widget o config plugin, riesgo alto con Expo prebuild, postergado |
+| **PM-06G.3** | Android Widget real | 🔮 Future — Requiere react-native-android-widget o config plugin, riesgo alto con Expo prebuild, postergado |
+| **PM-08** | Cloud workspace sync mobile/desktop | ✅ PASS — Mobile y desktop producción ven los mismos workspaces cloud. Crear grupo desde mobile aparece en desktop tras refresh. Texto compartido mobile/desktop funciona. |
+| **MUI-01** | Mobile premium UI redesign foundation | ✅ PASS — `b3fa0f2 MUI-01 mobile premium UI redesign foundation`. Apple Reminders iOS 17 + Linear mobile style. Dark premium forzado. BottomNav propio, Card component, CreateModal, useTheme tokens. Sin Reanimated, sin bottom-sheet externo, sin Paper/Tamagui/NativeWind, sin emojis. |
+
+---
+
+## Estado de UI Mobile (MUI-01, 2026-05-09)
+
+- **Commit:** `b3fa0f2 MUI-01 mobile premium UI redesign foundation`
+- **Estilo:** Apple Reminders iOS 17 + Linear mobile. Dark premium (light mode pendiente).
+- **Componentes nuevos:** BottomNav, Card, CreateModal, useTheme tokens
+- **Restricciones:** Sin Reanimated, sin bottom-sheet externo, sin Paper/Tamagui/NativeWind, sin emojis, sin logs de debug CLOUD/SYNC/LOCAL/backend URL
+- **Pendiente (futura fase):** ajustes light/dark toggle, tamaño de letra
+
+---
+
+## APK Android Standalone
+
+**Validado:** `b3fa0f2` APK standalone funcionando en celular físico sin Metro.
+
+### Build commands
+
+```bash
+# Prebuild Android (genera android/ nativo — NO commitear android/)
+cd apps/mobile
+npx expo prebuild --platform android --no-install --clean
+
+# Assemble release APK
+cd apps/mobile/android
+.\gradlew.bat :app:assembleRelease
+
+# Instalar en dispositivo
+adb install -r app\build\outputs\apk\release\app-release.apk
+```
+
+### Variables críticas (build-time)
+
+Mobile usa `EXPO_PUBLIC_*` vars, embebidas en build-time:
+- `EXPO_PUBLIC_API_BASE_URL=https://briefly.ddns.net` — API backend
+- `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY` — auth
+
+**NO validar standalone con `npx expo run:android`** — usa Metro. Validar standalone con APK instalada directamente.
 
 ---
 
@@ -108,15 +149,23 @@ Cold start: quick action guardada en `QuickActions.initial`, navegación diferid
 ```bash
 cd apps/mobile
 
-# Prebuild Android (genera android/ nativo)
+# Prebuild Android (genera android/ nativo — NO commitear android/)
 npx expo prebuild --platform android
 
 # Build debug APK
 cd android && ./gradlew assembleDebug
 
-# O directamente
+# O directamente (requiere Metro — para desarrollo, NO standalone)
 npx expo run:android
 ```
+
+## Mobile Security Notes
+
+- **NO pegar JWTs/tokens** en chats, logs o errores
+- Authorization Bearer visible en DevTools es normal en SPA sobre HTTPS — no compartir
+- Si token se expone, rotar sesión en Supabase dashboard
+- **NO imprimir `.env`** ni valores de `EXPO_PUBLIC_*`
+- No usar `printenv`, `docker inspect`, `docker exec env` en ningún contexto
 
 ---
 
