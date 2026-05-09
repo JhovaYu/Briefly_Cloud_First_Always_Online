@@ -137,7 +137,13 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
   workspaceService?: WorkspaceService;
   cloudProviderEnabled?: boolean;
 }) {
-  const [pools, setPools] = useState<PoolInfo[]>(getSavedPools());
+  // Cloud workspaces are the source of truth when cloud is enabled.
+  // localStorage pools (legacy P2P) are excluded to prevent stale data
+  // from overwriting fresh cloud workspace list.
+  const [cloudWorkspaces, setCloudWorkspaces] = useState<PoolInfo[]>([]);
+  const [cloudHydrating, setCloudHydrating] = useState(cloudProviderEnabled);
+  const [hydrationError, setHydrationError] = useState(false);
+  const [pools, setPools] = useState<PoolInfo[]>(cloudProviderEnabled ? [] : getSavedPools());
   const [joinId, setJoinId] = useState('');
   const [creating, setCreating] = useState(false);
   const [newPoolName, setNewPoolName] = useState('');
@@ -198,36 +204,46 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
     }
   }, []);
 
-  // PM-08D: Hydrate cloud workspaces from backend into local pool list
+  // PM-08D: Hydrate cloud workspaces from backend.
+  // Cloud workspaces replace localStorage pools entirely while cloud is active.
   useEffect(() => {
-    if (!cloudProviderEnabled || !workspaceService) return;
+    if (!cloudProviderEnabled || !workspaceService) {
+      setCloudHydrating(false);
+      return;
+    }
 
     let cancelled = false;
 
     (async () => {
+      setCloudHydrating(true);
+      setHydrationError(false);
       try {
         const workspaces = await workspaceService.listWorkspaces();
         if (cancelled) return;
 
-        let added = 0;
-        for (const ws of workspaces) {
-          addPool({
-            id: ws.id,
-            name: ws.name || 'My Workspace',
-            icon: 'collab',
-            lastOpened: Date.now(),
-            createdAt: Date.now(),
-            signalingUrl: undefined,
-          });
-          added++;
-        }
+        const cloudPoolList: PoolInfo[] = workspaces.map(ws => ({
+          id: ws.id,
+          name: ws.name || 'My Workspace',
+          icon: 'collab',
+          lastOpened: Date.now(),
+          createdAt: Date.now(),
+          signalingUrl: undefined,
+        }));
 
-        if (!cancelled && added > 0) {
-          setPools(getSavedPools());
-          console.info('[HomeDashboard] Hydrated cloud workspaces', { count: added });
-        }
+        setCloudWorkspaces(cloudPoolList);
+        setPools(cloudPoolList);
+        console.info('[HomeDashboard] Hydrated cloud workspaces', { count: cloudPoolList.length });
       } catch (err) {
         console.error('[HomeDashboard] Failed to hydrate cloud workspaces:', err);
+        if (!cancelled) {
+          setHydrationError(true);
+          // Fallback to localStorage only on failure
+          setPools(getSavedPools());
+        }
+      } finally {
+        if (!cancelled) {
+          setCloudHydrating(false);
+        }
       }
     })();
 
@@ -243,15 +259,24 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
     if (cloudProviderEnabled && workspaceService) {
       try {
         const ws = await workspaceService.createWorkspace(name);
-        addPool({
+        const newPool: PoolInfo = {
           id: ws.id,
           name: ws.name || name,
           icon: 'collab',
           lastOpened: Date.now(),
           createdAt: Date.now(),
           signalingUrl: undefined,
+        };
+        setCloudWorkspaces(prev => {
+          const exists = prev.some(p => p.id === ws.id);
+          if (exists) return prev;
+          return [...prev, newPool];
         });
-        setPools(getSavedPools());
+        setPools(prev => {
+          const exists = prev.some(p => p.id === ws.id);
+          if (exists) return prev;
+          return [...prev, newPool];
+        });
         setCreating(false);
         setNewPoolName('');
         onOpenPool(ws.id, ws.name || name, undefined);
@@ -320,16 +345,30 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
       signalingUrl: signalingUrl || (existingIndex >= 0 ? savedPools[existingIndex].signalingUrl : undefined),
     };
 
-    addPool(pool);
-    setPools(getSavedPools());
+    if (cloudProviderEnabled) {
+      const exists = cloudWorkspaces.some(p => p.id === poolId) || pools.some(p => p.id === poolId);
+      if (!exists) {
+        const newPool = pool;
+        setCloudWorkspaces(prev => [...prev, newPool]);
+        setPools(prev => [...prev, newPool]);
+      }
+    } else {
+      addPool(pool);
+      setPools(getSavedPools());
+    }
     setJoinId('');
     onOpenPool(pool.id, pool.name, signalingUrl);
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    removePool(id);
-    setPools(getSavedPools());
+    if (cloudProviderEnabled) {
+      setCloudWorkspaces(prev => prev.filter(p => p.id !== id));
+      setPools(prev => prev.filter(p => p.id !== id));
+    } else {
+      removePool(id);
+      setPools(getSavedPools());
+    }
   };
 
   const sorted = [...pools].sort((a, b) => b.lastOpened - a.lastOpened);
@@ -396,6 +435,30 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
                   {creating ? 'Cancelar' : '+ Nuevo'}
                 </span>
               </div>
+
+              {cloudHydrating && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1, 2, 3].map(i => (
+                    <div key={i} style={{
+                      height: 52, borderRadius: 12,
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      animation: 'pulse 1.5s ease-in-out infinite',
+                    }} />
+                  ))}
+                </div>
+              )}
+
+              {!cloudHydrating && hydrationError && (
+                <div role="alert" style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--color-error)',
+                  borderRadius: 8, padding: '8px 12px',
+                  fontSize: 12, color: 'var(--color-error)',
+                }}>
+                  No se pudieron cargar los grupos desde la nube. Cargando datos locales.
+                </div>
+              )}
 
               {creating && (
                 <div style={{
