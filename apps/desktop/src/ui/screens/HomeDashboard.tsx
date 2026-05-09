@@ -207,6 +207,11 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
   // PM-08D: Hydrate cloud workspaces from backend.
   // Cloud workspaces replace localStorage pools entirely while cloud is active.
   useEffect(() => {
+    console.info('[HomeDashboard] Cloud effect started', {
+      cloudProviderEnabled,
+      hasWorkspaceService: !!workspaceService,
+    });
+
     if (!cloudProviderEnabled || !workspaceService) {
       setCloudHydrating(false);
       return;
@@ -219,6 +224,7 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
       setHydrationError(false);
       try {
         const workspaces = await workspaceService.listWorkspaces();
+        console.info('[HomeDashboard] listWorkspaces result', { count: workspaces.length });
         if (cancelled) return;
 
         const cloudPoolList: PoolInfo[] = workspaces.map(ws => ({
