@@ -34,6 +34,7 @@ import { PoolWorkspace } from './ui/screens/PoolWorkspace';
 import { CalendarScreen } from './ui/screens/CalendarScreen';
 import { ScheduleScreen } from './ui/screens/ScheduleScreen';
 import { TasksScreen }   from './ui/screens/TasksScreen';
+import { LandingScreen } from './ui/screens/LandingScreen';
 
 // ════════════════════════════════════════════════════
 // MAIN APP — Screen Router
@@ -48,12 +49,13 @@ type Screen =
   | { type: 'tasks' }
   | { type: 'schedule' }
   | { type: 'boards' }
-  | { type: 'trash' };
+  | { type: 'trash' }
+  | { type: 'landing' };
 
 function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(getUserProfile());
   const [screen, setScreen] = useState<Screen>(() => {
-    return getUserProfile() ? { type: 'dashboard' } : { type: 'profile' };
+    return getUserProfile() ? { type: 'dashboard' } : { type: 'landing' };
   });
 
   // In-memory Y.Doc for the personal task list (no y-indexeddb yet — sufficient for testing)
@@ -287,8 +289,12 @@ function App() {
   const handleLogout = () => {
     setPlanningWorkspaceId(null);
     bootstrapInFlight.current = false;
-    setScreen({ type: 'profile' });
+    setScreen({ type: 'landing' });
   };
+
+  if (screen.type === 'landing') {
+    return <LandingScreen onStart={() => setScreen({ type: 'profile' })} />;
+  }
 
   if (screen.type === 'profile' || !userProfile) {
     return <ProfileSetup onComplete={handleProfileComplete} />;
