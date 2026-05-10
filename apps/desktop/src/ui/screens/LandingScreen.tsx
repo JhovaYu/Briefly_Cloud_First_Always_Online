@@ -421,37 +421,33 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
             </div>
           </div>
           <div className="landing-features-art">
-             {/* Detailed cliff/mountain art mimicking the mockup */}
-             <svg viewBox="0 0 300 800" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" className="cliff-svg">
-                {/* Winding path up the cliff */}
-                <path d="M0,800 C150,750 200,600 180,450 C160,300 250,150 220,50" fill="none" stroke="#e0dbcf" strokeWidth="40" strokeLinecap="round" />
-                <path d="M0,800 C150,750 200,600 180,450 C160,300 250,150 220,50" fill="none" stroke="#fdfcf8" strokeWidth="38" strokeLinecap="round" />
-                <path d="M0,800 C150,750 200,600 180,450 C160,300 250,150 220,50" fill="none" stroke="#d5cebc" strokeWidth="2" strokeDasharray="8 8" />
-                
-                {/* Cliff edges */}
-                <path d="M0,800 L120,800 L200,600 L160,450 L220,300 L240,150 L200,50 L300,50 L300,800 Z" fill="url(#cliff-grad)" opacity="0.1" />
-                <path d="M0,800 L120,800 L200,600 L160,450 L220,300 L240,150 L200,50" fill="none" stroke="#c4bfae" strokeWidth="2" strokeLinejoin="round" />
-                
-                {/* Trees on the cliff */}
-                <g transform="translate(180, 580)"><path d="M0,0 L8,-25 L16,0 Z" fill="#555" /><path d="M4,-10 L8,-30 L12,-10 Z" fill="#333" /></g>
-                <g transform="translate(130, 480)"><path d="M0,0 L6,-20 L12,0 Z" fill="#666" /></g>
-                <g transform="translate(200, 280)"><path d="M0,0 L10,-30 L20,0 Z" fill="#444" /></g>
-                <g transform="translate(180, 100)"><path d="M0,0 L5,-15 L10,0 Z" fill="#555" /></g>
-                <g transform="translate(230, 80)"><path d="M0,0 L7,-20 L14,0 Z" fill="#333" /></g>
-                
-                {/* Pin */}
-                <g transform="translate(220, 40)">
-                  <circle cx="0" cy="0" r="12" fill="#ef4444" />
-                  <path d="M-12,0 C-12,10 0,25 0,25 C0,25 12,10 12,0 Z" fill="#ef4444" />
-                  <circle cx="0" cy="0" r="4" fill="white" />
+             {/* Subtle mountain path decoration - contained, no push */}
+             <svg viewBox="0 0 120 400" width="120" height="400" className="features-deco-svg" aria-hidden="true">
+                {/* Small winding path */}
+                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#d5cebc" strokeWidth="12" strokeLinecap="round" />
+                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#fdfcf8" strokeWidth="10" strokeLinecap="round" />
+                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#e0dbcf" strokeWidth="1.5" strokeDasharray="4 4" />
+
+                {/* Mini mountains */}
+                <path d="M10,400 L40,320 L70,400" fill="none" stroke="#d5cebc" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M50,400 L85,290 L120,400" fill="none" stroke="#c4bfae" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M70,400 L95,340 L120,400" fill="none" stroke="#d5cebc" strokeWidth="1" strokeLinejoin="round" />
+
+                {/* Small trees */}
+                <g transform="translate(35, 280)">
+                  <path d="M0,0 L4,-12 L8,0 Z" fill="#aaa" />
+                  <path d="M2,-5 L4,-18 L6,-5 Z" fill="#888" />
                 </g>
-                
-                <defs>
-                  <linearGradient id="cliff-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#d5cebc" />
-                    <stop offset="100%" stopColor="#fdfcf8" />
-                  </linearGradient>
-                </defs>
+                <g transform="translate(75, 180)">
+                  <path d="M0,0 L3,-10 L6,0 Z" fill="#bbb" />
+                </g>
+
+                {/* Small pin - max 24px */}
+                <g transform="translate(50, 20)">
+                  <circle cx="0" cy="0" r="8" fill="#ef4444" />
+                  <path d="M-8,0 C-8,7 0,16 0,16 C0,16 8,7 8,0 Z" fill="#ef4444" />
+                  <circle cx="0" cy="0" r="2.5" fill="white" />
+                </g>
              </svg>
           </div>
         </div>
@@ -460,6 +456,14 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
       {/* EDITORIAL - DESIGNED FOR STUDENTS */}
       <section className="landing-section">
         <div className="landing-section-editorial-rich">
+          {/* Subtle transition decoration */}
+          <svg className="editorial-transition-deco" viewBox="0 0 80 120" width="80" height="120" aria-hidden="true">
+            <path d="M40,120 C40,100 50,80 40,60 C30,40 45,20 40,0" fill="none" stroke="#d5cebc" strokeWidth="8" strokeLinecap="round" />
+            <path d="M40,120 C40,100 50,80 40,60 C30,40 45,20 40,0" fill="none" stroke="#fdfcf8" strokeWidth="6" strokeLinecap="round" />
+            <circle cx="40" cy="20" r="5" fill="#c4bfae" />
+            <circle cx="45" cy="60" r="3" fill="#d5cebc" />
+          </svg>
+
           <div className="editorial-illustration">
              <svg viewBox="0 0 300 300" width="100%" height="100%">
                 {/* Soft landscape background */}

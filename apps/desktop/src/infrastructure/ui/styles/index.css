@@ -3603,20 +3603,20 @@ body.is-resizing-sidebar * {
   min-width: 0;
 }
 
-.cliff-svg {
+/* Subtle features decoration - contained, no push */
+.features-deco-svg {
   position: absolute;
-  top: 0;
-  right: -20px;
-  width: 220px;
-  height: 100%;
+  top: 20px;
+  right: 0;
+  width: 120px;
+  height: 400px;
   pointer-events: none;
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .landing-features-art {
-  position: sticky;
-  top: 80px;
-  height: 600px;
+  position: relative;
+  height: 520px;
   overflow: hidden;
 }
 
@@ -3971,6 +3971,16 @@ body.is-resizing-sidebar * {
   background: linear-gradient(180deg, #FAF7F0 0%, #F2EDE3 100%);
   padding: 80px max(6vw, 48px);
   margin-top: 60px;
+  position: relative;
+  overflow: hidden;
+}
+
+.editorial-transition-deco {
+  position: absolute;
+  top: 0;
+  left: max(5vw, 40px);
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .editorial-wrapper {
