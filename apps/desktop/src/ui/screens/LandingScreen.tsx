@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, ArrowRight, Cloud, Smartphone, Monitor, Shield, Server, Key, Layout, Users, FileText, Calendar, Lock, CheckCircle, Clock, BookOpen, Settings, Bell, Search, Plus } from 'lucide-react';
+import { Play, ArrowRight, Cloud, Smartphone, Monitor, Shield, Server, Key, Layout, Users, FileText, Calendar, Lock, CheckCircle, BookOpen } from 'lucide-react';
 
 interface LandingScreenProps {
   onStart: () => void;
@@ -51,176 +51,9 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
           </div>
         </div>
         
-        {/* HERO VISUAL MOCKUPS */}
+        {/* HERO VISUAL - real device mockups */}
         <div className="landing-hero-visuals">
-          <div className="landing-mockup-laptop">
-            <div className="landing-mockup-screen">
-              <div className="landing-mockup-header">
-                 <div className="mockup-header-dots">
-                   <span></span><span></span><span></span>
-                 </div>
-                 <div className="mockup-header-url">briefly.ddns.net</div>
-              </div>
-              <div className="landing-mockup-body">
-                <div className="landing-mockup-sidebar">
-                  <div className="sidebar-brand">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> 
-                    <span>Briefly</span>
-                  </div>
-                  <div className="sidebar-menu">
-                    <div className="sm-item active"><Layout size={14}/> Dashboard</div>
-                    <div className="sm-item"><FileText size={14}/> Notas</div>
-                    <div className="sm-item"><Calendar size={14}/> Calendario</div>
-                    <div className="sm-item"><CheckCircle size={14}/> Tareas</div>
-                    <div className="sm-item"><Clock size={14}/> Horario</div>
-                    <div className="sm-item"><Users size={14}/> Tableros</div>
-                  </div>
-                  <div className="sidebar-bottom">
-                    <div className="sm-item"><Settings size={14}/> Ajustes</div>
-                  </div>
-                </div>
-                <div className="landing-mockup-main">
-                  <div className="mockup-main-header">
-                     <h2>Dashboard</h2>
-                     <div className="mockup-main-actions">
-                        <Search size={14} color="#a1a1aa"/>
-                        <Bell size={14} color="#a1a1aa"/>
-                        <div className="mockup-avatar">J</div>
-                     </div>
-                  </div>
-                  <div className="mockup-kpis">
-                    <div className="kpi-card">
-                      <Users size={16} color="#a78bfa" />
-                      <div className="kpi-info">
-                        <div className="kpi-val">5</div>
-                        <div className="kpi-lbl">Total de Grupos</div>
-                      </div>
-                    </div>
-                    <div className="kpi-card">
-                      <CheckCircle size={16} color="#10b981" />
-                      <div className="kpi-info">
-                        <div className="kpi-val">2</div>
-                        <div className="kpi-lbl">Tareas Pendientes</div>
-                      </div>
-                    </div>
-                    <div className="kpi-card">
-                      <Calendar size={16} color="#f59e0b" />
-                      <div className="kpi-info">
-                        <div className="kpi-val">1</div>
-                        <div className="kpi-lbl">Eventos Hoy</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mockup-grid-main">
-                     <div className="mockup-col">
-                       <div className="mockup-section-title"><Users size={14}/> Mis grupos</div>
-                       <div className="mockup-list">
-                         <div className="ml-item">
-                           <div className="ml-icon bg-purple">PW</div> 
-                           <span>Personal Workspace</span>
-                         </div>
-                         <div className="ml-item">
-                           <div className="ml-icon bg-blue">P2</div> 
-                           <span>prueba2</span>
-                         </div>
-                         <div className="ml-item">
-                           <div className="ml-icon bg-green">PT</div> 
-                           <span>pm_tst_txt</span>
-                         </div>
-                         <div className="ml-item">
-                           <div className="ml-icon bg-orange">DB</div> 
-                           <span>db_final</span>
-                         </div>
-                       </div>
-                     </div>
-                     <div className="mockup-col">
-                       <div className="mockup-section-title"><Clock size={14}/> Horario de hoy</div>
-                       <div className="mockup-event-card">
-                         <div className="mec-time">10:00 AM</div>
-                         <div className="mec-details">
-                           <div className="mec-title">Revisión de avances</div>
-                           <div className="mec-sub">Sala de estudio virtual</div>
-                         </div>
-                       </div>
-                       
-                       <div className="mockup-section-title" style={{marginTop: 20}}><FileText size={14}/> Notas recientes</div>
-                       <div className="mockup-note-card">
-                         <div className="mnc-header">
-                            <div className="mnc-title">Briefly-Cliente V.02</div>
-                            <span className="mnc-badge">Hace 2h</span>
-                         </div>
-                         <div className="mnc-sub">Briefly Cloud / Workspace...</div>
-                       </div>
-                       <div className="mockup-note-card">
-                         <div className="mnc-header">
-                            <div className="mnc-title">Resumen de Biología</div>
-                            <span className="mnc-badge">Ayer</span>
-                         </div>
-                         <div className="mnc-sub">Capítulo 4 y 5...</div>
-                       </div>
-                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="laptop-base">
-               <div className="laptop-notch"></div>
-            </div>
-          </div>
-          
-          <div className="landing-mockup-mobile">
-            <div className="landing-mockup-screen-mobile">
-              <div className="mobile-notch"></div>
-              <div className="mobile-header">
-                <div className="mh-top">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                  <Bell size={16} color="#a1a1aa" />
-                </div>
-                <div className="mh-title">Hola, Jhovanny</div>
-                <div className="mh-sub">Miércoles, 5 de Mayo 2026</div>
-              </div>
-              <div className="mobile-body">
-                <div className="mobile-search">
-                  <Search size={14} color="#71717a" />
-                  <span>Buscar en Briefly...</span>
-                </div>
-                
-                <div className="mobile-section-title">Tareas pendientes <span className="ms-badge">2</span></div>
-                <div className="mobile-task-list">
-                  <div className="mt-item">
-                    <div className="mt-check"></div> 
-                    <div className="mt-text">
-                      <div className="mt-name">Leer capítulo 5 - Biología</div>
-                      <div className="mt-meta">Hoy • Personal Workspace</div>
-                    </div>
-                  </div>
-                  <div className="mt-item">
-                    <div className="mt-check"></div> 
-                    <div className="mt-text">
-                      <div className="mt-name">Ejercicios de derivadas</div>
-                      <div className="mt-meta">Mañana • Cálculo Diferencial</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mobile-section-title">Próximo evento</div>
-                <div className="mobile-event-card">
-                  <div className="me-icon"><Calendar size={14} color="#a78bfa" /></div>
-                  <div className="me-text">
-                    <div className="me-title">Cálculo Diferencial</div>
-                    <div className="me-time">Aula 13 • 12:00 - 13:30</div>
-                  </div>
-                </div>
-              </div>
-              <div className="mobile-tabbar">
-                <div className="mt-tab active"><Layout size={20}/></div>
-                <div className="mt-tab"><Calendar size={20}/></div>
-                <div className="mt-tab-fab"><Plus size={20}/></div>
-                <div className="mt-tab"><CheckCircle size={20}/></div>
-                <div className="mt-tab"><Users size={20}/></div>
-              </div>
-            </div>
-          </div>
+          <img src="/landing/device-mockups.png" alt="" className="hero-devices-img" />
         </div>
       </section>
 
@@ -241,13 +74,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
               <h3>1. Crea un grupo</h3>
               <p>Invita a tus compañeros y crea espacios de estudio privados en segundos.</p>
               <div className="card-illustration">
-                <svg viewBox="0 0 100 60" width="100" height="60">
-                  {/* Hikers/people illustration */}
-                  <path d="M10,50 L30,30 L50,45 L80,10" fill="none" stroke="#d5cebc" strokeWidth="2" strokeLinejoin="round"/>
-                  <circle cx="20" cy="40" r="3" fill="#777"/>
-                  <circle cx="60" cy="35" r="3" fill="#777"/>
-                  <path d="M5,55 L95,55" fill="none" stroke="#e0dbcf" strokeWidth="1" strokeDasharray="4 4" />
-                </svg>
+                <img src="/landing/how-it-works-1.png" alt="" className="hiw-img" />
               </div>
             </div>
             <div className="landing-feature-card">
@@ -257,13 +84,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
               <h3>2. Organiza hojas y tareas</h3>
               <p>Comparte hojas, asigna tareas y define fechas para mantener todo en orden.</p>
               <div className="card-illustration">
-                <svg viewBox="0 0 100 60" width="100" height="60">
-                  {/* Books illustration */}
-                  <rect x="25" y="35" width="50" height="8" rx="1" fill="#fdfcf8" stroke="#777" strokeWidth="1.5" />
-                  <rect x="30" y="27" width="40" height="8" rx="1" fill="#fdfcf8" stroke="#777" strokeWidth="1.5" />
-                  <rect x="20" y="43" width="60" height="8" rx="1" fill="#fdfcf8" stroke="#777" strokeWidth="1.5" />
-                  <line x1="10" y1="55" x2="90" y2="55" stroke="#e0dbcf" strokeWidth="1" strokeDasharray="4 4" />
-                </svg>
+                <img src="/landing/how-it-works-2.png" alt="" className="hiw-img" />
               </div>
             </div>
             <div className="landing-feature-card">
@@ -273,12 +94,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
               <h3>3. Continúa desde web o móvil</h3>
               <p>Tu información siempre sincronizada. Continúa donde lo dejaste.</p>
               <div className="card-illustration">
-                 <svg viewBox="0 0 100 60" width="100" height="60">
-                  {/* Mountains illustration */}
-                  <path d="M10,55 L40,25 L60,45 L90,15 L100,25" fill="none" stroke="#777" strokeWidth="1.5" strokeLinejoin="round"/>
-                  <path d="M30,55 L50,35 L70,55" fill="none" stroke="#aaa" strokeWidth="1" strokeLinejoin="round"/>
-                  <line x1="5" y1="55" x2="95" y2="55" stroke="#e0dbcf" strokeWidth="1" strokeDasharray="4 4" />
-                 </svg>
+                 <img src="/landing/how-it-works-3.png" alt="" className="hiw-img" />
               </div>
             </div>
           </div>
@@ -421,34 +237,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
             </div>
           </div>
           <div className="landing-features-art">
-             {/* Subtle mountain path decoration - contained, no push */}
-             <svg viewBox="0 0 120 400" width="120" height="400" className="features-deco-svg" aria-hidden="true">
-                {/* Small winding path */}
-                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#d5cebc" strokeWidth="12" strokeLinecap="round" />
-                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#fdfcf8" strokeWidth="10" strokeLinecap="round" />
-                <path d="M80,400 C70,350 90,300 60,250 C40,210 70,160 50,100 C40,70 55,40 50,10" fill="none" stroke="#e0dbcf" strokeWidth="1.5" strokeDasharray="4 4" />
-
-                {/* Mini mountains */}
-                <path d="M10,400 L40,320 L70,400" fill="none" stroke="#d5cebc" strokeWidth="1.5" strokeLinejoin="round" />
-                <path d="M50,400 L85,290 L120,400" fill="none" stroke="#c4bfae" strokeWidth="1.5" strokeLinejoin="round" />
-                <path d="M70,400 L95,340 L120,400" fill="none" stroke="#d5cebc" strokeWidth="1" strokeLinejoin="round" />
-
-                {/* Small trees */}
-                <g transform="translate(35, 280)">
-                  <path d="M0,0 L4,-12 L8,0 Z" fill="#aaa" />
-                  <path d="M2,-5 L4,-18 L6,-5 Z" fill="#888" />
-                </g>
-                <g transform="translate(75, 180)">
-                  <path d="M0,0 L3,-10 L6,0 Z" fill="#bbb" />
-                </g>
-
-                {/* Small pin - max 24px */}
-                <g transform="translate(50, 20)">
-                  <circle cx="0" cy="0" r="8" fill="#ef4444" />
-                  <path d="M-8,0 C-8,7 0,16 0,16 C0,16 8,7 8,0 Z" fill="#ef4444" />
-                  <circle cx="0" cy="0" r="2.5" fill="white" />
-                </g>
-             </svg>
+             <img src="/landing/features-cliff.png" alt="" className="features-cliff-img" />
           </div>
         </div>
       </section>
@@ -465,19 +254,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
           </svg>
 
           <div className="editorial-illustration">
-             <svg viewBox="0 0 300 300" width="100%" height="100%">
-                {/* Soft landscape background */}
-                <circle cx="150" cy="150" r="140" fill="#f5f3fa" />
-                <path d="M30,220 C80,180 150,230 270,170 L270,290 L30,290 Z" fill="#ede9f5" />
-                
-                {/* Abstract student/reader figure (line art style) */}
-                <path d="M100,220 C100,180 130,150 150,150 C170,150 200,180 200,220" fill="none" stroke="#7c5cbf" strokeWidth="4" strokeLinecap="round" />
-                <circle cx="150" cy="120" r="25" fill="none" stroke="#7c5cbf" strokeWidth="4" />
-                <path d="M120,190 L180,190 L170,220 L130,220 Z" fill="#fdfcf8" stroke="#7c5cbf" strokeWidth="3" strokeLinejoin="round" />
-                {/* Book lines */}
-                <line x1="135" y1="200" x2="165" y2="200" stroke="#7c5cbf" strokeWidth="2" strokeLinecap="round" />
-                <line x1="135" y1="210" x2="160" y2="210" stroke="#7c5cbf" strokeWidth="2" strokeLinecap="round" />
-             </svg>
+             <img src="/landing/student-illustration.png" alt="" className="student-illustration-img" />
           </div>
           <div className="editorial-content">
             <span className="landing-section-overline">DISEÑADO PARA ESTUDIANTES</span>
@@ -505,7 +282,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
 
       {/* SECURITY AND AVAILABILITY */}
       <section id="security" className="landing-section-dark">
-        <div className="landing-section" style={{paddingBottom: 0, paddingTop: 60}}>
+        <div className="landing-section">
           <div className="landing-section-header">
             <span className="landing-section-overline" style={{color: '#a78bfa'}}>SEGURIDAD Y DISPONIBILIDAD</span>
             <h2 className="landing-section-title">Tu información está protegida<br/>y siempre disponible.</h2>
@@ -542,16 +319,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
           </div>
         </div>
         
-        {/* Mountain silhouettes at bottom of dark section */}
-        <div className="landing-dark-mountains">
-           <svg width="100%" height="150" viewBox="0 0 1440 150" preserveAspectRatio="none">
-             <path d="M0,150 L0,80 L150,40 L300,90 L450,20 L600,100 L750,50 L900,110 L1100,30 L1300,80 L1440,50 L1440,150 Z" fill="#0c0c12" />
-             <path d="M0,150 L0,120 L200,70 L350,110 L500,60 L650,130 L800,90 L1000,140 L1200,80 L1440,110 L1440,150 Z" fill="#050508" />
-             {/* Trees silhouette */}
-             <path d="M100,120 L105,90 L110,120 Z M120,130 L123,100 L126,130 Z" fill="#030305" />
-             <path d="M1300,110 L1305,70 L1310,110 Z M1320,120 L1324,80 L1328,120 Z" fill="#030305" />
-           </svg>
-        </div>
+        {/* Mountain decoration at bottom of dark section */}
+        <img src="/landing/security-mountains.png" alt="" className="security-mountains-img" />
       </section>
 
       {/* CTA FINAL */}
@@ -576,28 +345,7 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
           </div>
           <div className="cta-device-bg"></div>
           <div className="landing-cta-visual">
-             <div className="cta-mockup-laptop">
-               <div className="cta-ml-screen">
-                 <div className="cta-ml-header"></div>
-                 <div className="cta-ml-body">
-                   <div className="cta-ml-sidebar"></div>
-                   <div className="cta-ml-main">
-                     <div className="cta-ml-cards"><div></div><div></div><div></div></div>
-                     <div className="cta-ml-grid"><div></div><div></div></div>
-                   </div>
-                 </div>
-               </div>
-             </div>
-             <div className="cta-mockup-mobile">
-               <div className="cta-mm-screen">
-                 <div className="cta-mm-header"></div>
-                 <div className="cta-mm-body">
-                   <div className="cta-mm-item"></div>
-                   <div className="cta-mm-item"></div>
-                   <div className="cta-mm-item"></div>
-                 </div>
-               </div>
-             </div>
+             <img src="/landing/cta-devices.png" alt="" className="cta-devices-img" />
           </div>
         </div>
       </section>
