@@ -6,7 +6,7 @@ import {
   Zap, Edit3, Copy, FilePlus, FolderOpen, FileText, Download, Trash2,
   GripVertical, ChevronRight, ChevronDown, MoreHorizontal, ArrowLeft,
   Plus, FolderPlus, Search, ListChecks, BookOpen, Clipboard, Moon, Sun,
-  QrCode, ChevronLeft, Sidebar, Settings, X
+  QrCode, ChevronLeft, Sidebar, Settings, X, Share2
 } from 'lucide-react';
 import type { Note, Notebook, TaskList } from '@tuxnotas/shared';
 import { type UserProfile, getSavedPools } from '../../core/domain/UserProfile';
@@ -17,6 +17,7 @@ import { QrModal } from '../components/QrModal';
 import { SharedTextPanel } from '../components/SharedTextPanel';
 import type { WorkspaceService } from '@tuxnotas/shared';
 import { SettingsModal, useSettings } from '../components/SettingsModal';
+import { ShareModal } from '../components/ShareModal';
 import { exportNoteAs, exportAllPoolAsZip, exportNoteToService } from '../utils/exportHelpers';
 
 export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, workspaceService, cloudWorkspaceId, getAccessToken }: {
@@ -43,6 +44,7 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
     (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark'
   );
   const [showSettings, setShowSettings] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   
   const settings = useSettings();
   const workspaceSvc = workspaceService;
@@ -629,6 +631,9 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
             <button className="header-btn" onClick={() => setShowSettings(true)} title="Ajustes">
               <Settings size={14} strokeWidth={1.5} />
             </button>
+            <button className="header-btn" onClick={() => setShowShare(true)} title="Compartir">
+              <Share2 size={14} strokeWidth={1.5} />
+            </button>
             <button className="header-btn" onClick={onBack}><ArrowLeft size={14} /><span>Dashboard</span></button>
           </div>
         </div>
@@ -691,6 +696,14 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} settings={settings} />}
+      {showShare && (
+        <ShareModal
+          onClose={() => setShowShare(false)}
+          workspaceId={cloudWorkspaceId ?? null}
+          userName={user.name}
+          userColor={user.color}
+        />
+      )}
     </div>
   );
 }
