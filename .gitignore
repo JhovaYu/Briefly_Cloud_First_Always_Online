@@ -38,3 +38,6 @@ contexto_llm.txt
 STUDIO_CONTEXT.md
 .agents
 auditaciones_comandos.txt
+
+*.apk
+C:\dev\Briefly_artifacts\briefly-demo-android.apk
