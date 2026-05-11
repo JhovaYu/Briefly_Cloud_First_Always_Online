@@ -3,16 +3,21 @@ name: Desktop CI — Build Check
 on:
   push:
     branches: [pm-06-mobile-rn, main]
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-
-paths:
-  - 'apps/desktop/**'
-  - 'packages/**'
-  - 'package.json'
-  - 'package-lock.json'
-  - '.github/workflows/desktop-ci.yml'
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
 
 permissions:
   contents: read
