@@ -4380,6 +4380,16 @@ body.is-resizing-sidebar * {
   display: flex;
   align-items: center;
   gap: 8px;
+  text-decoration: none;
+  color: #555;
+  border: 1px solid rgba(124, 92, 191, 0.4);
+  background: rgba(124, 92, 191, 0.06);
+}
+
+.cta-github-btn:hover {
+  background: rgba(124, 92, 191, 0.12);
+  border-color: #7c5cbf;
+  color: #7c5cbf;
 }
 
 .cta-devices-img {

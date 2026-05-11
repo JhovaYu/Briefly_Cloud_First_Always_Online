@@ -25,8 +25,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
   const navLinks = [
     { href: '#hero', label: 'Inicio' },
     { href: '#features', label: 'Funciones' },
-    { href: '#mobile', label: 'Mobile' },
     { href: '#security', label: 'Seguridad' },
+    { href: '#mobile', label: 'Mobile' },
     { href: '#footer', label: 'Equipo' },
   ];
 
@@ -379,11 +379,11 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
                 <Monitor size={18} /> Abrir web
               </button>
               {/* TODO: replace with GitHub Releases APK URL before production release */}
-              <a href="/downloads/briefly.apk" download className="landing-btn-secondary">
+              <a href="https://github.com/JhovaYu/Briefly_Cloud_First_Always_Online/releases/latest/download/briefly-demo-android.apk" target="_blank" rel="noopener noreferrer" className="landing-btn-secondary">
                 <Smartphone size={18} /> Descargar APK
               </a>
               <a href="https://github.com/JhovaYu/Briefly_Cloud_First_Always_Online.git" target="_blank" rel="noreferrer" className="landing-btn-outline cta-github-btn">
-                <img src="/github-mark.svg" alt="" width="18" onError={(e) => e.currentTarget.style.display='none'} /> Ver repositorio
+                <img src="/landing/github-mark.svg" alt="" width="18" onError={(e) => e.currentTarget.style.display='none'} /> Ver repositorio
               </a>
             </div>
           </div>
@@ -407,8 +407,8 @@ export const LandingScreen: React.FC<LandingScreenProps> = ({ onStart }) => {
               <h4>Producto</h4>
               <a href="#hero">Inicio</a>
               <a href="#features">Funciones</a>
-              <a href="#mobile">Mobile</a>
               <a href="#security">Seguridad</a>
+              <a href="#mobile">Mobile</a>
             </div>
             <div className="landing-footer-col">
               <h4>Recursos</h4>
