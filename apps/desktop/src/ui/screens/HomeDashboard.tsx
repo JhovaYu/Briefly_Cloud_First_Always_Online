@@ -608,22 +608,19 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
                   <div className="db2-section-header">
                     <h3><History size={14} /> Notas recientes</h3>
                   </div>
-                  <div className="db2-recent-list" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '4px 4px' }}>
-                    {[
-                      { title: 'Briefing Cliente - Web 3.0', time: 'hace 15 min' },
-                      { title: 'Componentes de Diseño Atómico', time: 'hace 1 hora' },
-                      { title: 'Notas Reunión QA', time: 'hace 1 día' },
-                    ].map((note, i) => (
-                      <div key={i} className="db2-recent-row">
-                        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
-                          <FileText size={14} />
-                        </div>
-                        <div className="db2-recent-info">
-                          <strong>{note.title}</strong>
-                          <span>Modificado {note.time}</span>
-                        </div>
-                      </div>
-                    ))}
+                  <div style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 12,
+                    padding: '20px 16px',
+                    textAlign: 'center',
+                    color: 'var(--text-tertiary)',
+                  }}>
+                    <FileText size={20} style={{ opacity: 0.3, marginBottom: 8 }} />
+                    <p style={{ margin: 0, fontSize: 13 }}>Aún no hay notas recientes</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, opacity: 0.6 }}>
+                      Cuando edites páginas compartidas, aparecerán aquí.
+                    </p>
                   </div>
                 </div>
 
