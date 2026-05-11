@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Copy, Check, Users } from 'lucide-react';
+import { X, Copy, Check, Users, Lock, Link2, Mail } from 'lucide-react';
 
 interface ShareModalProps {
   onClose: () => void;
@@ -9,6 +9,12 @@ interface ShareModalProps {
 }
 
 type AccessMode = 'private' | 'link' | 'invite';
+
+const ACCESS_CONFIG = {
+  private: { icon: Lock, label: 'Privado', hint: 'Solo tú puedes ver este workspace.' },
+  link: { icon: Link2, label: 'Con enlace', hint: 'Cualquier persona con el código puede unirse.' },
+  invite: { icon: Mail, label: 'Solo invitación', hint: 'Solo con invitación directa.' },
+};
 
 export function ShareModal({ onClose, workspaceId, userName, userColor }: ShareModalProps) {
   const [accessMode, setAccessMode] = useState<AccessMode>('link');
@@ -23,7 +29,7 @@ export function ShareModal({ onClose, workspaceId, userName, userColor }: ShareM
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback: select the text
+      // clipboard unavailable
     }
   };
 
@@ -36,7 +42,7 @@ export function ShareModal({ onClose, workspaceId, userName, userColor }: ShareM
       <div className="share-modal">
         {/* Header */}
         <div className="share-header">
-          <div>
+          <div className="share-header-text">
             <h2 className="share-title">Compartir workspace</h2>
             <p className="share-subtitle">Controla quién puede unirse y colaborar en este espacio.</p>
           </div>
@@ -45,71 +51,76 @@ export function ShareModal({ onClose, workspaceId, userName, userColor }: ShareM
           </button>
         </div>
 
-        {/* Acceso */}
-        <div className="share-section">
-          <label className="share-section-label">Acceso</label>
-          <div className="share-access-toggle">
-            {(['private', 'link', 'invite'] as AccessMode[]).map(mode => (
+        {/* Scrollable body */}
+        <div className="share-body">
+
+          {/* Acceso */}
+          <div className="share-section">
+            <label className="share-section-label">Acceso</label>
+            <div className="share-access-toggle">
+              {(Object.keys(ACCESS_CONFIG) as AccessMode[]).map(mode => {
+                const { icon: Icon, label } = ACCESS_CONFIG[mode];
+                return (
+                  <button
+                    key={mode}
+                    className={`share-access-btn ${accessMode === mode ? 'active' : ''}`}
+                    onClick={() => setAccessMode(mode)}
+                  >
+                    <Icon size={14} strokeWidth={1.8} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="share-hint">{ACCESS_CONFIG[accessMode].hint}</p>
+          </div>
+
+          {/* Código de unión */}
+          <div className="share-section">
+            <label className="share-section-label">Código de unión</label>
+            <div className="share-code-row">
+              <div className="share-code-wrapper">
+                <code className="share-code" title={joinCode}>{joinCode || '—'}</code>
+              </div>
               <button
-                key={mode}
-                className={`share-access-btn ${accessMode === mode ? 'active' : ''}`}
-                onClick={() => setAccessMode(mode)}
+                className={`share-copy-btn ${copied ? 'copied' : ''}`}
+                onClick={handleCopy}
+                disabled={!joinCode}
               >
-                {mode === 'private' && 'Privado'}
-                {mode === 'link' && 'Con enlace'}
-                {mode === 'invite' && 'Solo invitación'}
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado' : 'Copiar'}
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Código de unión */}
-        <div className="share-section">
-          <label className="share-section-label">Código de unión</label>
-          <div className="share-code-row">
-            <div className="share-code-display">
-              <code className="share-code">{joinCode || '—'}</code>
-              <span className="share-code-badge">Código activo</span>
             </div>
-            <button
-              className={`share-copy-btn ${copied ? 'copied' : ''}`}
-              onClick={handleCopy}
-              disabled={!joinCode}
-              title="Copiar código"
-            >
-              {copied ? <Check size={15} /> : <Copy size={15} />}
-              {copied ? 'Copiado' : 'Copiar código'}
-            </button>
+            <div className="share-code-status">
+              <span className="share-code-badge">
+                <span className="share-code-dot" />
+                Código activo
+              </span>
+            </div>
           </div>
-          <p className="share-hint">
-            {accessMode === 'private' && 'Solo tú puedes ver este workspace.'}
-            {accessMode === 'link' && 'Cualquier persona con el código puede unirse.'}
-            {accessMode === 'invite' && 'Solo con invitación directa.'}
-          </p>
-        </div>
 
-        {/* Miembros (visual only MVP) */}
-        <div className="share-section">
-          <label className="share-section-label">
-            <Users size={13} style={{ display: 'inline', marginRight: 6 }} />
-            Miembros
-          </label>
-          <div className="share-members-list">
-            {/* Owner — always shown */}
-            <div className="share-member-row">
-              <div className="share-member-avatar" style={{ background: userColor }}>
-                {userName.charAt(0).toUpperCase()}
+          {/* Miembros */}
+          <div className="share-section">
+            <label className="share-section-label">
+              <Users size={13} />
+              Miembros
+            </label>
+            <div className="share-members-list">
+              <div className="share-member-row">
+                <div className="share-member-avatar" style={{ background: userColor }}>
+                  {userName.charAt(0).toUpperCase()}
+                </div>
+                <div className="share-member-info">
+                  <span className="share-member-name">{userName}</span>
+                  <span className="share-member-role">Propietario</span>
+                </div>
               </div>
-              <div className="share-member-info">
-                <span className="share-member-name">{userName}</span>
-                <span className="share-member-role">Propietario</span>
+              <div className="share-members-coming">
+                <span>Gestión de miembros próximamente</span>
               </div>
             </div>
-            {/* Placeholder for future members */}
-            <div className="share-members-placeholder">
-              <span>Próximamente: gestión de miembros</span>
-            </div>
           </div>
+
         </div>
 
         {/* Footer */}
