@@ -9,10 +9,12 @@ import {
   type UserProfile, type PoolInfo,
   getSavedPools, addPool, removePool, updatePoolLastOpened
 } from '../../core/domain/UserProfile';
-import type { WorkspaceService } from '@tuxnotas/shared';
+import type { WorkspaceService, PlanningApiClient } from '@tuxnotas/shared';
 import { useSettings, SettingsModal } from '../components/SettingsModal';
 import { NotificationsModal } from '../components/NotificationsModal';
 import { Sidebar } from '../components/Sidebar';
+import { usePlanningTasks } from '../hooks/usePlanningTasks';
+import type { PlanningTask } from '@tuxnotas/shared';
 import * as Y from 'yjs';
 import { TaskService, type Task } from '@tuxnotas/shared';
 
@@ -127,7 +129,10 @@ function PoolCard({ pool, onOpen, onDelete }: PoolCardProps) {
 }
 
 // ── Componente principal ──────────────────────────────────────────────────
-export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalendar, onNavigate, workspaceService, cloudProviderEnabled }: {
+export function HomeDashboard({
+  user, yjsDoc, onOpenPool, onLogout, onOpenCalendar, onNavigate,
+  workspaceService, planningClient, cloudProviderEnabled,
+}: {
   user: UserProfile;
   yjsDoc: Y.Doc;
   onOpenPool: (poolId: string, name: string, signalingUrl?: string) => void;
@@ -135,11 +140,9 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
   onOpenCalendar: () => void;
   onNavigate: (route: string) => void;
   workspaceService?: WorkspaceService;
+  planningClient?: PlanningApiClient;
   cloudProviderEnabled?: boolean;
 }) {
-  // Cloud workspaces are the source of truth when cloud is enabled.
-  // localStorage pools (legacy P2P) are excluded to prevent stale data
-  // from overwriting fresh cloud workspace list.
   const [cloudWorkspaces, setCloudWorkspaces] = useState<PoolInfo[]>([]);
   const [cloudHydrating, setCloudHydrating] = useState(cloudProviderEnabled);
   const [hydrationError, setHydrationError] = useState(false);
@@ -165,7 +168,41 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
     localStorage.setItem('fluent-theme', theme);
   }, [theme]);
 
-  // Sincronización de Tareas P2P — skip in cloud mode, tasks live in planning-service
+  // Cloud task sync — skip in legacy P2P mode, tasks live in planning-service
+  const cloud = usePlanningTasks(planningClient!, {
+    scope: 'global',
+    workspaceId: null,
+    enabled: !!(cloudProviderEnabled && planningClient && workspaceService),
+    workspaceService,
+    currentUserId: user.id,
+    globalTimeoutMs: 10000,
+  });
+
+  // Sync cloud tasks → local upcomingTasks
+  useEffect(() => {
+    if (!cloudProviderEnabled) return;
+    if (!cloud.isInitialized) return;
+    const pending = cloud.tasks.filter((t: PlanningTask) => t.state !== 'done');
+    const withDue = pending
+      .filter((t: PlanningTask) => t.due_date != null)
+      .sort((a: PlanningTask, b: PlanningTask) => a.due_date!.localeCompare(b.due_date!))
+      .slice(0, 5);
+    setUpcomingTasks(withDue.map((t: PlanningTask) => ({
+      id: t.id,
+      listId: t.list_id ?? '',
+      text: t.text,
+      state: t.state,
+      assigneeId: t.assignee_id,
+      dueDate: t.due_date ? new Date(t.due_date).getTime() : undefined,
+      description: t.description,
+      createdAt: t.created_at ? new Date(t.created_at).getTime() : Date.now(),
+      completedAt: t.completed_at ? new Date(t.completed_at).getTime() : undefined,
+      priority: t.priority,
+      tags: t.tags,
+    })));
+  }, [cloudProviderEnabled, cloud.tasks, cloud.isInitialized]);
+
+  // Legacy P2P tasks — only when cloud is disabled
   useEffect(() => {
     if (cloudProviderEnabled) return;
     const svc = new TaskService(yjsDoc);

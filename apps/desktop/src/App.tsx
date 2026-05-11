@@ -312,6 +312,7 @@ function App() {
         onOpenCalendar={() => setScreen({ type: 'calendar' })}
         onNavigate={handleNavigate}
         workspaceService={workspaceSvc}
+        planningClient={planningClient}
         cloudProviderEnabled={COLLAB_USE_CLOUD}
       />
     );
@@ -344,6 +345,7 @@ function App() {
         planningEnabled={PLANNING_BACKEND_ENABLED}
         planningWorkspaceId={planningWorkspaceId}
         planningClient={planningClient}
+        workspaceService={workspaceSvc}
       />
     );
   }

@@ -4,16 +4,16 @@ import {
   CheckSquare, Clock, Trash2,
   CheckCircle2, AlertCircle,
   LayoutList, LayoutGrid, Search, MoreHorizontal,
-  Flag, Plus, X,
+  Flag, Plus, X, Globe, Folder,
 } from 'lucide-react';
 import * as Y from 'yjs';
 import type { Task, TaskState, TaskPriority, TaskList } from '@tuxnotas/shared';
 import { TaskService, createUuid } from '@tuxnotas/shared';
-import type { PlanningApiClient } from '@tuxnotas/shared';
+import type { PlanningApiClient, WorkspaceService } from '@tuxnotas/shared';
 import type { PlanningTask } from '@tuxnotas/shared';
 import type { UserProfile } from '../../core/domain/UserProfile';
 import { Sidebar } from '../components/Sidebar';
-import { usePlanningTasks } from '../hooks/usePlanningTasks';
+import { usePlanningTasks, type TaskScope } from '../hooks/usePlanningTasks';
 import { isoToTimestamp, timestampToIso } from '@tuxnotas/shared';
 
 // ─────────────────────────────────────────────
@@ -112,6 +112,8 @@ interface TasksScreenProps {
   planningWorkspaceId?: string | null;
   /** Planning API client — required when planningEnabled is true */
   planningClient?: PlanningApiClient;
+  /** Used for global scope to list all workspaces */
+  workspaceService?: WorkspaceService;
 }
 
 // ─────────────────────────────────────────────
@@ -615,6 +617,7 @@ export function TasksScreen({
   planningEnabled,
   planningWorkspaceId,
   planningClient,
+  workspaceService,
 }: TasksScreenProps) {
   const serviceRef = useRef<TaskService | null>(null);
   const [personalListId, setPersonalListId] = useState<string | null>(null);
@@ -633,17 +636,27 @@ export function TasksScreen({
     timeoutId: ReturnType<typeof setTimeout>;
   } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [scope, setScope] = useState<TaskScope>('global');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState<{ id: string; name: string }[]>([]);
 
   // Cloud planning hook — always called, works safely with enabled=false
-  const cloud = usePlanningTasks(planningClient!, planningWorkspaceId ?? null, planningEnabled === true);
+  const cloud = usePlanningTasks(planningClient!, {
+    scope,
+    workspaceId: scope === 'workspace' ? (selectedWorkspaceId ?? planningWorkspaceId ?? null) : null,
+    enabled: planningEnabled === true,
+    workspaceService: planningEnabled ? workspaceService : undefined,
+    currentUserId: user.id,
+    globalDefaultWorkspaceId: scope === 'global' ? (availableWorkspaces[0]?.id ?? null) : null,
+  });
 
   // Ref to guard bootstrap effect against repeated executions
   // Reset when workspaceId changes so bootstrap re-runs for a new workspace
   const cloudBootstrapped = useRef(false);
   const prevWorkspaceId = useRef<string | null>(null);
-  if (prevWorkspaceId.current !== planningWorkspaceId) {
+  if (prevWorkspaceId.current !== (scope === 'workspace' ? selectedWorkspaceId : null)) {
     cloudBootstrapped.current = false;
-    prevWorkspaceId.current = planningWorkspaceId ?? null;
+    prevWorkspaceId.current = scope === 'workspace' ? selectedWorkspaceId : null;
   }
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('fluent-theme') as 'light' | 'dark') || 'dark');
@@ -654,11 +667,31 @@ export function TasksScreen({
     localStorage.setItem('fluent-theme', newTheme);
   };
 
+  // Load available workspaces — needed for both global (creation target) and workspace (combobox)
+  useEffect(() => {
+    if (!planningEnabled || !workspaceService) return;
+
+    workspaceService.listWorkspaces().then(workspaces => {
+      const wsList = workspaces.map(w => ({ id: w.id, name: w.name }));
+      setAvailableWorkspaces(wsList);
+      // Auto-select first workspace if none selected (for workspace scope combobox)
+      if (!selectedWorkspaceId && wsList.length > 0) {
+        setSelectedWorkspaceId(wsList[0].id);
+      }
+    }).catch(() => {
+      // ignore workspace list errors
+    });
+  }, [planningEnabled, workspaceService]);
+
   // Bootstrap cloud task-list (create "Personal" if none exist)
+  // Only applies in workspace scope; global scope shows merged tasks without bootstrapping
   // Guard with cloudBootstrapped ref to avoid loop
   // Wait for cloud.isInitialized before bootstrapping to avoid creating duplicate lists
   useEffect(() => {
-    if (!planningEnabled || !planningWorkspaceId) return;
+    if (!planningEnabled) return;
+    if (scope === 'global') return; // no bootstrapping in global mode
+    const effectiveWsId = selectedWorkspaceId ?? planningWorkspaceId;
+    if (!effectiveWsId) return;
     if (!cloud.isInitialized) return;
     if (cloudBootstrapped.current) return;
 
@@ -672,11 +705,19 @@ export function TasksScreen({
       setPersonalListId(cloud.taskLists[0].id);
       cloud.refresh();
     }
-  }, [planningEnabled, planningWorkspaceId, cloud.isInitialized, cloud.taskLists.length, cloud]);
+  }, [planningEnabled, scope, selectedWorkspaceId, cloud.isInitialized, cloud.taskLists.length, cloud]);
 
   // Cloud mode: load tasks from hook when bootstrap is ready
   useEffect(() => {
-    if (!planningEnabled || !cloud.taskLists.length) return;
+    if (!planningEnabled) return;
+    if (scope === 'global') {
+      // In global mode, personalListId is not applicable — use null
+      setPersonalListId(null);
+      setLocalError(cloud.error ?? null);
+      setTasks(cloud.tasks.map(planningToTask));
+      return;
+    }
+    if (!cloud.taskLists.length) return;
     // Keep personalListId in sync with first cloud list
     if (!personalListId || cloud.taskLists[0]?.id !== personalListId) {
       setPersonalListId(cloud.taskLists[0].id);
@@ -1013,6 +1054,56 @@ export function TasksScreen({
 
           {/* ── Toolbar ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
+            {/* Scope toggle — only in cloud mode */}
+            {planningEnabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ position: 'relative', display: 'flex', gap: '2px', background: 'var(--bg-secondary)', padding: '3px', borderRadius: '7px', border: '1px solid var(--border-color)' }}>
+                  {(['global', 'workspace'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setScope(s)}
+                      style={{
+                        position: 'relative', zIndex: 1,
+                        padding: '5px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 600,
+                        border: 'none', cursor: 'pointer', fontFamily: 'var(--font-ui)',
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        background: 'transparent',
+                        color: scope === s ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                        transition: 'color 0.15s',
+                      }}
+                    >
+                      {scope === s && (
+                        <motion.span
+                          layoutId="scope-toggle-pill"
+                          style={{
+                            position: 'absolute', inset: 0, borderRadius: '5px',
+                            background: 'var(--bg-primary)', boxShadow: 'var(--shadow-sm)',
+                            zIndex: -1,
+                          }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                      {s === 'global' ? <Globe size={13} /> : <Folder size={13} />}
+                      {s === 'global' ? 'Global' : 'Workspace'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Workspace selector — only when scope is workspace */}
+                {scope === 'workspace' && availableWorkspaces.length > 0 && (
+                  <select
+                    value={selectedWorkspaceId ?? ''}
+                    onChange={e => setSelectedWorkspaceId(e.target.value || null)}
+                    style={{ padding: '5px 8px', border: '1px solid var(--border-input)', borderRadius: '6px', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'var(--font-ui)', cursor: 'pointer', outline: 'none' }}
+                  >
+                    {availableWorkspaces.map(ws => (
+                      <option key={ws.id} value={ws.id}>{ws.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
             {/* Search */}
             <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
