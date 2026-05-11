@@ -11,44 +11,74 @@ import { tokens } from '../src/theme/tokens';
 
 const theme = tokens.dark;
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
   const router = useRouter();
-  const { signIn, loading: authLoading } = useAuth();
+  const { signUp, loading: authLoading } = useAuth();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
     if (!email.trim() || !password.trim()) return;
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden');
+      return;
+    }
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
-    const { error: err } = await signIn(email.trim(), password);
+    const { error: err } = await signUp(email.trim(), password, name.trim() || undefined);
 
     setSubmitting(false);
     if (err) {
       const msg = err.message ?? '';
-      if (
-        msg.toLowerCase().includes('invalid') ||
-        msg.toLowerCase().includes('credentials') ||
-        msg.toLowerCase().includes('password')
-      ) {
-        setError('Email o contraseña incorrectos');
+      if (msg.toLowerCase().includes('email')) {
+        setError('Este correo ya está registrado');
       } else if (
         msg.toLowerCase().includes('network') ||
-        msg.toLowerCase().includes('fetch') ||
-        msg.toLowerCase().includes('connection')
+        msg.toLowerCase().includes('fetch')
       ) {
         setError('Sin conexión. Verifica tu internet e inténtalo de nuevo');
       } else {
-        setError('No pudimos iniciar sesión. Intenta nuevamente');
+        setError('No pudimos crear la cuenta. Intenta nuevamente');
       }
     } else {
-      router.replace('/home');
+      setSuccess(true);
     }
   };
+
+  if (success) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.logoWrapper}>
+            <BrieflyLogo width={140} height={48} />
+          </View>
+          <View style={styles.successCard}>
+            <Ionicons name="mail-open-outline" size={48} color={theme.success} />
+            <Text style={styles.successTitle}>Revisa tu correo</Text>
+            <Text style={styles.successSubtitle}>
+              Te enviamos un enlace para confirmar tu cuenta. Revisa tu bandeja de entrada y spam.
+            </Text>
+            <Link href="/login" asChild>
+              <TouchableOpacity style={styles.backBtn}>
+                <Text style={styles.backBtnText}>Volver al inicio de sesión</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -65,8 +95,8 @@ export default function LoginScreen() {
         </View>
 
         {/* Header text */}
-        <Text style={styles.title}>Bienvenido de vuelta</Text>
-        <Text style={styles.subtitle}>Inicia sesión para continuar estudiando</Text>
+        <Text style={styles.title}>Crea tu cuenta</Text>
+        <Text style={styles.subtitle}>Únete a Briefly y estudia mejor</Text>
 
         {/* Google button — disabled / coming soon */}
         <TouchableOpacity
@@ -75,7 +105,7 @@ export default function LoginScreen() {
           disabled
         >
           <Ionicons name="logo-google" size={20} color={theme.textMuted} />
-          <Text style={styles.googleBtnText}>Continuar con Google · Próximamente</Text>
+          <Text style={styles.googleBtnText}>Crear cuenta con Google · Próximamente</Text>
         </TouchableOpacity>
 
         {/* Divider */}
@@ -83,6 +113,22 @@ export default function LoginScreen() {
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>o continúa con email</Text>
           <View style={styles.dividerLine} />
+        </View>
+
+        {/* Name input */}
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>Nombre visible</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej. Juan Pérez"
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="words"
+            textContentType="name"
+            returnKeyType="next"
+            value={name}
+            onChangeText={(t) => { setName(t); setError(null); }}
+            editable={!submitting && !authLoading}
+          />
         </View>
 
         {/* Email input */}
@@ -108,15 +154,14 @@ export default function LoginScreen() {
           <View style={styles.passwordWrapper}>
             <TextInput
               style={styles.passwordInput}
-              placeholder="Tu contraseña"
+              placeholder="Mínimo 6 caracteres"
               placeholderTextColor={theme.textMuted}
               secureTextEntry={!showPassword}
-              textContentType="password"
-              returnKeyType="done"
+              textContentType="newPassword"
+              returnKeyType="next"
               value={password}
               onChangeText={(t) => { setPassword(t); setError(null); }}
               editable={!submitting && !authLoading}
-              onSubmitEditing={handleLogin}
             />
             <TouchableOpacity
               style={styles.eyeBtn}
@@ -132,6 +177,23 @@ export default function LoginScreen() {
           </View>
         </View>
 
+        {/* Confirm password input */}
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>Confirmar contraseña</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Repite tu contraseña"
+            placeholderTextColor={theme.textMuted}
+            secureTextEntry={!showPassword}
+            textContentType="newPassword"
+            returnKeyType="done"
+            value={confirmPassword}
+            onChangeText={(t) => { setConfirmPassword(t); setError(null); }}
+            editable={!submitting && !authLoading}
+            onSubmitEditing={handleRegister}
+          />
+        </View>
+
         {/* Error message */}
         {error && (
           <View style={styles.errorWrapper}>
@@ -143,29 +205,27 @@ export default function LoginScreen() {
         {/* CTA */}
         <TouchableOpacity
           style={[styles.ctaBtn, (submitting || authLoading) && styles.ctaBtnDisabled]}
-          onPress={handleLogin}
+          onPress={handleRegister}
           disabled={submitting || authLoading}
           activeOpacity={0.8}
         >
           {submitting || authLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.ctaBtnText}>Iniciar sesión</Text>
+            <Text style={styles.ctaBtnText}>Crear cuenta</Text>
           )}
         </TouchableOpacity>
 
-        {/* Links */}
+        {/* Terms */}
+        <Text style={styles.termsText}>
+          Al crear una cuenta aceptas nuestros términos y política de privacidad.
+        </Text>
+
+        {/* Link */}
         <View style={styles.linksRow}>
-          <Link href="/register" asChild>
+          <Link href="/login" asChild>
             <TouchableOpacity>
-              <Text style={styles.linkText}>¿No tienes cuenta? <Text style={styles.linkBold}>Crear una</Text></Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-        <View style={styles.linksRow}>
-          <Link href="/forgot" asChild>
-            <TouchableOpacity>
-              <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
+              <Text style={styles.linkText}>¿Ya tienes cuenta? <Text style={styles.linkBold}>Iniciar sesión</Text></Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -295,7 +355,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   ctaBtnDisabled: {
     opacity: 0.6,
@@ -304,6 +364,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  termsText: {
+    fontSize: 11,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
   },
   linksRow: {
     alignItems: 'center',
@@ -314,6 +381,35 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
   },
   linkBold: {
+    color: theme.primary,
+    fontWeight: '600',
+  },
+  // Success state
+  successCard: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: theme.text,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+    paddingHorizontal: 16,
+  },
+  backBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  backBtnText: {
+    fontSize: 14,
     color: theme.primary,
     fontWeight: '600',
   },

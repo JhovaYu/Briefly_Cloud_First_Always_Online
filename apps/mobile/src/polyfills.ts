@@ -12,9 +12,23 @@ if (typeof global.Buffer === 'undefined') {
     global.Buffer = Buffer;
 }
 
-// 2. Polyfill WebRTC (Crucial for y-webrtc)
-import { registerGlobals } from 'react-native-webrtc';
-registerGlobals();
+// 2. WebRTC — lazy, only when explicitly requested
+// react-native-webrtc is a native module that fails in Expo Go.
+// keep the polyfill available but do NOT auto-initialize on startup.
+let _webrtcInitialized = false;
+export function ensureWebRTC(): boolean {
+  if (_webrtcInitialized) return true;
+  try {
+    const { registerGlobals } = require('react-native-webrtc');
+    registerGlobals();
+    _webrtcInitialized = true;
+    return true;
+  } catch {
+    // Not available in Expo Go — skip silently, auth doesn't need WebRTC
+    _webrtcInitialized = true; // mark done so we don't retry
+    return false;
+  }
+}
 
 // 3. RESTORE: If getDevServer was lost, put it back
 // @ts-ignore

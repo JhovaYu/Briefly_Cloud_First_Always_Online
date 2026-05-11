@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator
 } from 'react-native';
-import { useRouter, Link } from 'expo-router';
+import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/services/AuthContext';
 import { BrieflyLogo } from '../src/components/ui/BrieflyLogo';
@@ -11,44 +11,59 @@ import { tokens } from '../src/theme/tokens';
 
 const theme = tokens.dark;
 
-export default function LoginScreen() {
-  const router = useRouter();
-  const { signIn, loading: authLoading } = useAuth();
+export default function ForgotScreen() {
+  const { resetPassword, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) return;
+  const handleReset = async () => {
+    if (!email.trim()) return;
     setSubmitting(true);
     setError(null);
 
-    const { error: err } = await signIn(email.trim(), password);
+    const { error: err } = await resetPassword(email.trim());
 
     setSubmitting(false);
     if (err) {
       const msg = err.message ?? '';
       if (
-        msg.toLowerCase().includes('invalid') ||
-        msg.toLowerCase().includes('credentials') ||
-        msg.toLowerCase().includes('password')
-      ) {
-        setError('Email o contraseña incorrectos');
-      } else if (
         msg.toLowerCase().includes('network') ||
-        msg.toLowerCase().includes('fetch') ||
-        msg.toLowerCase().includes('connection')
+        msg.toLowerCase().includes('fetch')
       ) {
         setError('Sin conexión. Verifica tu internet e inténtalo de nuevo');
       } else {
-        setError('No pudimos iniciar sesión. Intenta nuevamente');
+        setError('No pudimos enviar el enlace. Intenta nuevamente');
       }
     } else {
-      router.replace('/home');
+      setSuccess(true);
     }
   };
+
+  if (success) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.logoWrapper}>
+            <BrieflyLogo width={140} height={48} />
+          </View>
+          <View style={styles.infoCard}>
+            <Ionicons name="checkmark-circle" size={48} color={theme.success} />
+            <Text style={styles.infoTitle}>Enlace enviado</Text>
+            <Text style={styles.infoSubtitle}>
+              Revisa tu bandeja de entrada y spam.
+            </Text>
+            <Link href="/login" asChild>
+              <TouchableOpacity style={styles.backBtn}>
+                <Text style={styles.backBtnText}>Volver al inicio de sesión</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -65,24 +80,15 @@ export default function LoginScreen() {
         </View>
 
         {/* Header text */}
-        <Text style={styles.title}>Bienvenido de vuelta</Text>
-        <Text style={styles.subtitle}>Inicia sesión para continuar estudiando</Text>
+        <Text style={styles.title}>Recupera tu acceso</Text>
+        <Text style={styles.subtitle}>Te enviaremos un enlace a tu correo</Text>
 
-        {/* Google button — disabled / coming soon */}
-        <TouchableOpacity
-          style={styles.googleBtn}
-          activeOpacity={0.7}
-          disabled
-        >
-          <Ionicons name="logo-google" size={20} color={theme.textMuted} />
-          <Text style={styles.googleBtnText}>Continuar con Google · Próximamente</Text>
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>o continúa con email</Text>
-          <View style={styles.dividerLine} />
+        {/* Info card */}
+        <View style={styles.preInfoCard}>
+          <Ionicons name="information-circle-outline" size={18} color={theme.textSecondary} />
+          <Text style={styles.preInfoText}>
+            Si tu cuenta existe, recibirás un enlace para restablecer tu contraseña.
+          </Text>
         </View>
 
         {/* Email input */}
@@ -95,41 +101,12 @@ export default function LoginScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             textContentType="emailAddress"
-            returnKeyType="next"
+            returnKeyType="done"
             value={email}
             onChangeText={(t) => { setEmail(t); setError(null); }}
             editable={!submitting && !authLoading}
+            onSubmitEditing={handleReset}
           />
-        </View>
-
-        {/* Password input */}
-        <View style={styles.inputWrapper}>
-          <Text style={styles.inputLabel}>Contraseña</Text>
-          <View style={styles.passwordWrapper}>
-            <TextInput
-              style={styles.passwordInput}
-              placeholder="Tu contraseña"
-              placeholderTextColor={theme.textMuted}
-              secureTextEntry={!showPassword}
-              textContentType="password"
-              returnKeyType="done"
-              value={password}
-              onChangeText={(t) => { setPassword(t); setError(null); }}
-              editable={!submitting && !authLoading}
-              onSubmitEditing={handleLogin}
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword((v) => !v)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* Error message */}
@@ -143,29 +120,22 @@ export default function LoginScreen() {
         {/* CTA */}
         <TouchableOpacity
           style={[styles.ctaBtn, (submitting || authLoading) && styles.ctaBtnDisabled]}
-          onPress={handleLogin}
+          onPress={handleReset}
           disabled={submitting || authLoading}
           activeOpacity={0.8}
         >
           {submitting || authLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.ctaBtnText}>Iniciar sesión</Text>
+            <Text style={styles.ctaBtnText}>Enviar enlace de recuperación</Text>
           )}
         </TouchableOpacity>
 
-        {/* Links */}
+        {/* Link */}
         <View style={styles.linksRow}>
-          <Link href="/register" asChild>
+          <Link href="/login" asChild>
             <TouchableOpacity>
-              <Text style={styles.linkText}>¿No tienes cuenta? <Text style={styles.linkBold}>Crear una</Text></Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-        <View style={styles.linksRow}>
-          <Link href="/forgot" asChild>
-            <TouchableOpacity>
-              <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
+              <Text style={styles.linkText}>Volver al inicio de sesión</Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -201,41 +171,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.textSecondary,
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
-  googleBtn: {
+  preInfoCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     backgroundColor: theme.surface,
-    borderRadius: 14,
+    borderRadius: 12,
+    paddingHorizontal: 16,
     paddingVertical: 14,
+    marginBottom: 24,
     borderWidth: 1,
     borderColor: theme.border,
-    opacity: 0.6,
-    marginBottom: 24,
   },
-  googleBtnText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: theme.textMuted,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 24,
-  },
-  dividerLine: {
+  preInfoText: {
+    fontSize: 13,
+    color: theme.textSecondary,
     flex: 1,
-    height: 1,
-    backgroundColor: theme.border,
-  },
-  dividerText: {
-    fontSize: 12,
-    color: theme.textMuted,
-    whiteSpace: 'nowrap',
+    lineHeight: 20,
   },
   inputWrapper: {
     marginBottom: 16,
@@ -255,25 +209,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: theme.border,
-  },
-  passwordWrapper: {
-    position: 'relative',
-  },
-  passwordInput: {
-    backgroundColor: theme.surface,
-    color: theme.text,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingRight: 48,
-  },
-  eyeBtn: {
-    position: 'absolute',
-    right: 14,
-    top: 14,
   },
   errorWrapper: {
     flexDirection: 'row',
@@ -311,9 +246,34 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 13,
-    color: theme.textSecondary,
+    color: theme.primary,
+    fontWeight: '600',
   },
-  linkBold: {
+  // Success state
+  infoCard: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  infoTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: theme.text,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  infoSubtitle: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+    paddingHorizontal: 16,
+  },
+  backBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  backBtnText: {
+    fontSize: 14,
     color: theme.primary,
     fontWeight: '600',
   },
