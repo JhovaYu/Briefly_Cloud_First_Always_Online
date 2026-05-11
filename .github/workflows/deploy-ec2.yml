@@ -1,0 +1,62 @@
+name: Deploy Desktop to EC2 (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to confirm production deployment'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ec2-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Only run if confirm equals DEPLOY
+    if: ${{ github.event.inputs.confirm == 'DEPLOY' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+
+            cd /home/${{ secrets.EC2_USER }}/Briefly_Cloud_First_Always_Online
+
+            # Pull latest changes from pm-06-mobile-rn
+            git fetch origin pm-06-mobile-rn
+            git checkout pm-06-mobile-rn
+            git pull --ff-only origin pm-06-mobile-rn
+
+            # Install dependencies and build
+            npm ci
+            NODE_OPTIONS="--max-old-space-size=2048" npm run build --workspace apps/desktop
+
+            # Rebuild and restart nginx container
+            docker compose -f docker-compose.ec2.yml build nginx
+            docker compose -f docker-compose.ec2.yml up -d nginx
+
+            # Verify nginx is running
+            docker compose -f docker-compose.ec2.yml ps nginx
+
+      - name: Health check
+        run: |
+          curl -sS -I https://briefly.ddns.net | head -1

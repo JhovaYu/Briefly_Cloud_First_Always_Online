@@ -1,0 +1,53 @@
+name: Desktop CI — Build Check
+
+on:
+  push:
+    branches: [pm-06-mobile-rn, main]
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build desktop app
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build desktop app
+        run: npm run build --workspace apps/desktop
+
+      - name: Verify dist exists
+        run: |
+          if [ ! -d "apps/desktop/dist" ]; then
+            echo "ERROR: apps/desktop/dist does not exist after build"
+            exit 1
+          fi
+          echo "Build artifact verified: apps/desktop/dist/"
