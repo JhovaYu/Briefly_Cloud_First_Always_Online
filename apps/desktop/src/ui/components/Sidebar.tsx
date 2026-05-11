@@ -17,6 +17,12 @@ export interface SidebarProps {
     onOpenNotifications?: () => void;
     onOpenProfile?: () => void;
     onNewNote?: () => void;
+    // Auth info for ProfileDrawer
+    authEmail?: string;
+    authProvider?: string;
+    lastSignInAt?: string;
+    cloudSessionAvailable?: boolean;
+    onResetProfile?: () => void;
 }
 
 export function Sidebar({
@@ -29,7 +35,12 @@ export function Sidebar({
     onOpenSettings,
     onOpenNotifications,
     onOpenProfile,
-    onNewNote
+    onNewNote,
+    authEmail,
+    authProvider,
+    lastSignInAt,
+    cloudSessionAvailable,
+    onResetProfile,
 }: SidebarProps) {
     const [isProfileOpen, setProfileOpen] = useState(false);
 
@@ -87,13 +98,17 @@ export function Sidebar({
                 <button className="db2-nav-item" onClick={onOpenSettings}><Settings size={16} /> Ajustes</button>
                 <button className="db2-nav-item" onClick={onLogout}><LogOut size={16} /> Cerrar sesión</button>
             </div>
-            <ProfileDrawer 
-                isOpen={isProfileOpen} 
-                onClose={() => setProfileOpen(false)} 
-                user={user} 
-                theme={theme}
-                onToggleTheme={onToggleTheme}
-                onSave={handleSaveProfile} 
+            <ProfileDrawer
+                isOpen={isProfileOpen}
+                onClose={() => setProfileOpen(false)}
+                user={user}
+                onSave={handleSaveProfile}
+                authEmail={authEmail}
+                authProvider={authProvider}
+                lastSignInAt={lastSignInAt}
+                cloudSessionAvailable={cloudSessionAvailable}
+                onLogout={onLogout}
+                onResetProfile={onResetProfile}
             />
         </aside>
     );

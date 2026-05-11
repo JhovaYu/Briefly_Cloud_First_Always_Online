@@ -132,6 +132,8 @@ function PoolCard({ pool, onOpen, onDelete }: PoolCardProps) {
 export function HomeDashboard({
   user, yjsDoc, onOpenPool, onLogout, onOpenCalendar, onNavigate,
   workspaceService, planningClient, cloudProviderEnabled,
+  authEmail, authProvider, lastSignInAt, cloudSessionAvailable,
+  onResetProfile,
 }: {
   user: UserProfile;
   yjsDoc: Y.Doc;
@@ -142,6 +144,11 @@ export function HomeDashboard({
   workspaceService?: WorkspaceService;
   planningClient?: PlanningApiClient;
   cloudProviderEnabled?: boolean;
+  authEmail?: string;
+  authProvider?: string;
+  lastSignInAt?: string;
+  cloudSessionAvailable?: boolean;
+  onResetProfile?: () => void;
 }) {
   const [cloudWorkspaces, setCloudWorkspaces] = useState<PoolInfo[]>([]);
   const [cloudHydrating, setCloudHydrating] = useState(cloudProviderEnabled);
@@ -453,6 +460,11 @@ export function HomeDashboard({
         onOpenSettings={() => setShowSettings(true)}
         onOpenNotifications={() => setShowNotifications(true)}
         onNewNote={() => setCreating(!creating)}
+        authEmail={authEmail}
+        authProvider={authProvider}
+        lastSignInAt={lastSignInAt}
+        cloudSessionAvailable={cloudSessionAvailable}
+        onResetProfile={onResetProfile}
       />
 
       {/* MAIN */}

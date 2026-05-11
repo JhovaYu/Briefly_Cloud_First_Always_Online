@@ -64,10 +64,13 @@ function App() {
     personalDocRef.current = new Y.Doc();
   }
 
+  // ── Auth session state ───────────────────────────────────────
+  const [cloudSessionAvailable, setCloudSessionAvailable] = useState(false);
+  const [authUserEmail, setAuthUserEmail] = useState<string | undefined>(undefined);
+  const [authUserProvider, setAuthUserProvider] = useState<string | undefined>(undefined);
+  const [authLastSignInAt, setAuthLastSignInAt] = useState<string | undefined>(undefined);
   // ── Planning backend state ─────────────────────────────────────
   const [planningWorkspaceId, setPlanningWorkspaceId] = useState<string | null>(null);
-  // Tracks whether Supabase auth session is available (independent of userProfile)
-  const [cloudSessionAvailable, setCloudSessionAvailable] = useState(false);
 
   // Guard against overlapping bootstrap calls
   const bootstrapInFlight = useRef(false);
@@ -241,9 +244,14 @@ function App() {
     const sb = IdentityManager.cloudClient;
     if (!sb) return;
 
-    // Initialize cloudSessionAvailable from current session
+    // Initialize cloudSessionAvailable and auth info from current session
     sb.auth.getSession().then(({ data: { session } }) => {
       setCloudSessionAvailable(!!session?.access_token);
+      if (session) {
+        setAuthUserEmail(session.user?.email);
+        setAuthUserProvider(session.user?.app_metadata?.provider || 'email');
+        setAuthLastSignInAt(session.user?.last_sign_in_at);
+      }
       if (session && !getUserProfile()) {
         fetchAndSaveProfile(session.user.id, session.user);
       }
@@ -253,6 +261,15 @@ function App() {
     // and to clear planningWorkspaceId on sign-out
     const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
       setCloudSessionAvailable(!!session?.access_token);
+      if (session) {
+        setAuthUserEmail(session.user?.email);
+        setAuthUserProvider(session.user?.app_metadata?.provider || 'email');
+        setAuthLastSignInAt(session.user?.last_sign_in_at);
+      } else {
+        setAuthUserEmail(undefined);
+        setAuthUserProvider(undefined);
+        setAuthLastSignInAt(undefined);
+      }
 
       if (!!session?.access_token && !userProfile) {
         // New login
@@ -295,8 +312,24 @@ function App() {
     setScreen({ type: 'dashboard' });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Attempt real Supabase signOut if cloud client exists
+    try {
+      const sb = IdentityManager.cloudClient;
+      if (sb) {
+        await sb.auth.signOut();
+      }
+    } catch (err) {
+      // Network or other error during signOut — log safely without secrets
+      console.warn('[Auth] signOut error:', err instanceof Error ? err.message : String(err));
+    }
+    // Clear all local state
     setPlanningWorkspaceId(null);
+    setCloudSessionAvailable(false);
+    setAuthUserEmail(undefined);
+    setAuthUserProvider(undefined);
+    setAuthLastSignInAt(undefined);
+    setUserProfile(null);
     bootstrapInFlight.current = false;
     setScreen({ type: 'landing' });
   };
@@ -323,6 +356,17 @@ function App() {
         workspaceService={workspaceSvc}
         planningClient={planningClient}
         cloudProviderEnabled={COLLAB_USE_CLOUD}
+        authEmail={authUserEmail}
+        authProvider={authUserProvider}
+        lastSignInAt={authLastSignInAt}
+        cloudSessionAvailable={cloudSessionAvailable}
+        onResetProfile={() => {
+          import('./core/preferences/LocalPreferences').then(({ clearUserProfile }) => {
+            clearUserProfile();
+            setUserProfile(null);
+            setScreen({ type: 'landing' });
+          });
+        }}
       />
     );
   }
