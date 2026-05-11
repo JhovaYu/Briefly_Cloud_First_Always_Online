@@ -475,7 +475,7 @@ The manual confirmation step (`workflow_dispatch` with `confirm: DEPLOY`) preven
 ### Secrets Setup (GitHub)
 
 1. Go to **Settings → Secrets and variables → Actions**
-2. Add `EC2_HOST` — your EC2 public IP
+2. Add `EC2_HOST` — your EC2 public IP (used as fallback when `ec2_host` input is empty)
 3. Add `EC2_USER` — typically `ec2-user`
 4. Add `SSH_PRIVATE_KEY` — paste the full private key content (including `-----BEGIN OPENSSH PRIVATE KEY-----`)
 
@@ -485,5 +485,13 @@ The manual confirmation step (`workflow_dispatch` with `confirm: DEPLOY`) preven
 2. Select **"Deploy Desktop to EC2 (Manual)"**
 3. Click **Run workflow**
 4. Enter `DEPLOY` in the confirm field
-5. Click **Run workflow**
-6. Monitor the runner log for build progress and health check result
+5. **If your EC2 IP changed** (e.g., after stopping/starting the instance): enter the current public IPv4 in the `ec2_host` field — otherwise leave it empty to use the `EC2_HOST` secret
+6. Click **Run workflow**
+7. Monitor the runner log for build progress and health check result
+
+**SSH Timeout Troubleshooting:**
+If the deploy fails with `dial tcp: i/o timeout` on port 22:
+- Verify your EC2 instance's Security Group allows **inbound SSH (port 22)** from your IP
+- For temporary demo deploys: open SSH port 22 from `0.0.0.0/0` during deploy, then restrict it afterward
+- After stopping/starting an AWS Academy Learner Lab instance, the public IP typically changes — enter the new IP in the `ec2_host` workflow input
+- Ensure the EC2 instance is running and the SSH key matches the `SSH_PRIVATE_KEY` secret

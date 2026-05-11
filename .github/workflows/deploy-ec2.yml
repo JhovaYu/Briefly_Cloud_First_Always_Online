@@ -7,6 +7,10 @@ on:
         description: 'Type DEPLOY to confirm production deployment'
         required: true
         type: string
+      ec2_host:
+        description: 'Optional EC2 public IPv4/DNS. If empty, uses EC2_HOST secret.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -33,7 +37,7 @@ jobs:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ inputs.ec2_host != '' && inputs.ec2_host || secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
