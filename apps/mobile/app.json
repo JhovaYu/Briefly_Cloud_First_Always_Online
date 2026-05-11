@@ -39,7 +39,8 @@
         }
       ],
       "./plugins/withNetworkSecurityConfig",
-      "./plugins/withTodayWidget"
+      "./plugins/withTodayWidget",
+      "expo-web-browser"
     ]
   }
 }

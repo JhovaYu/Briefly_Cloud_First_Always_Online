@@ -13,7 +13,7 @@ const theme = tokens.dark;
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { signUp, loading: authLoading } = useAuth();
+  const { signUp, signInWithGoogle, loading: authLoading } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,6 +22,7 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim()) return;
@@ -53,6 +54,18 @@ export default function RegisterScreen() {
       }
     } else {
       setSuccess(true);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError(null);
+    const { error: err } = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (err) {
+      setError('No pudimos crear la cuenta con Google. Intenta nuevamente.');
+    } else {
+      router.replace('/home');
     }
   };
 
@@ -98,14 +111,21 @@ export default function RegisterScreen() {
         <Text style={styles.title}>Crea tu cuenta</Text>
         <Text style={styles.subtitle}>Únete a Briefly y estudia mejor</Text>
 
-        {/* Google button — disabled / coming soon */}
+        {/* Google button */}
         <TouchableOpacity
           style={styles.googleBtn}
           activeOpacity={0.7}
-          disabled
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading || submitting || authLoading}
         >
-          <Ionicons name="logo-google" size={20} color={theme.textMuted} />
-          <Text style={styles.googleBtnText}>Crear cuenta con Google · Próximamente</Text>
+          {googleLoading ? (
+            <ActivityIndicator color={theme.text} size="small" />
+          ) : (
+            <>
+              <Ionicons name="logo-google" size={20} color={theme.text} />
+              <Text style={styles.googleBtnText}>Crear cuenta con Google</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Divider */}
@@ -273,7 +293,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderWidth: 1,
     borderColor: theme.border,
-    opacity: 0.6,
     marginBottom: 24,
   },
   googleBtnText: {

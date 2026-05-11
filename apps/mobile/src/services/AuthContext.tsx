@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
 import { queryClient } from '../lib/queryClient';
 
@@ -9,6 +11,7 @@ type AuthContextType = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name?: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   getAccessToken: () => string | null;
@@ -62,10 +65,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
   };
 
+  const signInWithGoogle = async (): Promise<{ error: Error | null }> => {
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'briefly', path: 'auth/callback' });
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) return { error };
+      if (!data.url) return { error: new Error('No se pudo iniciar la autenticación') };
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        return { error: null };
+      }
+      if (result.type !== 'success') {
+        return { error: new Error('No pudimos completar el inicio con Google. Revisa la configuración e intenta de nuevo.') };
+      }
+
+      const code = new URL(result.url).searchParams.get('code') ?? undefined;
+      if (!code) return { error: new Error('No se completó la autenticación. Intenta nuevamente.') };
+
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      return { error: exchangeError as Error | null };
+    } catch (e) {
+      return { error: e as Error };
+    }
+  };
+
   const getAccessToken = () => session?.access_token ?? null;
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signIn, signUp, resetPassword, signOut, getAccessToken }}>
+    <AuthContext.Provider value={{ session, user, loading, signIn, signUp, signInWithGoogle, resetPassword, signOut, getAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

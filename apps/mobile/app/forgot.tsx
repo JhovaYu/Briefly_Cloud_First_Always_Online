@@ -19,7 +19,16 @@ export default function ForgotScreen() {
   const [success, setSuccess] = useState(false);
 
   const handleReset = async () => {
-    if (!email.trim()) return;
+    const trimmed = email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmed) {
+      setError('Ingresa un correo válido');
+      return;
+    }
+    if (!emailRegex.test(trimmed)) {
+      setError('Ingresa un correo válido');
+      return;
+    }
     setSubmitting(true);
     setError(null);
 

@@ -13,12 +13,13 @@ const theme = tokens.dark;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn, loading: authLoading } = useAuth();
+  const { signIn, signInWithGoogle, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) return;
@@ -50,6 +51,18 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError(null);
+    const { error: err } = await signInWithGoogle();
+    setGoogleLoading(false);
+    if (err) {
+      setError('No pudimos iniciar sesión con Google. Intenta nuevamente.');
+    } else {
+      router.replace('/home');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -68,14 +81,21 @@ export default function LoginScreen() {
         <Text style={styles.title}>Bienvenido de vuelta</Text>
         <Text style={styles.subtitle}>Inicia sesión para continuar estudiando</Text>
 
-        {/* Google button — disabled / coming soon */}
+        {/* Google button */}
         <TouchableOpacity
           style={styles.googleBtn}
           activeOpacity={0.7}
-          disabled
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading || submitting || authLoading}
         >
-          <Ionicons name="logo-google" size={20} color={theme.textMuted} />
-          <Text style={styles.googleBtnText}>Continuar con Google · Próximamente</Text>
+          {googleLoading ? (
+            <ActivityIndicator color={theme.text} size="small" />
+          ) : (
+            <>
+              <Ionicons name="logo-google" size={20} color={theme.text} />
+              <Text style={styles.googleBtnText}>Continuar con Google</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Divider */}
@@ -213,7 +233,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderWidth: 1,
     borderColor: theme.border,
-    opacity: 0.6,
     marginBottom: 24,
   },
   googleBtnText: {
