@@ -101,6 +101,18 @@ export class WorkspaceService {
     }
 
     /**
+     * Join an existing workspace as MEMBER.
+     * Idempotent: if already a member, returns 200 and the existing workspace.
+     * Raises 404 if the workspace does not exist.
+     */
+    async joinWorkspace(workspaceId: string): Promise<void> {
+        await this.request<void>(
+            'POST',
+            `/workspaces/${workspaceId}/join`,
+        );
+    }
+
+    /**
      * Retrieves the cached active workspace ID from localStorage.
      * Returns null if no key is set.
      */

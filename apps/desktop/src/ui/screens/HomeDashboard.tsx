@@ -340,6 +340,26 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
       signalingUrl = `ws://${parts[1]}:4444`;
     }
 
+    // Cloud-first join: call backend to create membership before navigating
+    if (cloudProviderEnabled && workspaceService) {
+      try {
+        await workspaceService.joinWorkspace(poolId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('404')) {
+          setCreateError('El código de grupo no es válido o el grupo no existe.');
+          return;
+        }
+        setCreateError('No se pudo unir al grupo. Intenta de nuevo.');
+        return;
+      }
+      // join succeeded — clear the join field and navigate
+      setJoinId('');
+      onOpenPool(poolId, poolId, undefined);
+      return;
+    }
+
+    // P2P legacy path
     const savedPools = getSavedPools();
     const existingIndex = savedPools.findIndex(p => p.id === poolId);
     const poolName = existingIndex >= 0 ? savedPools[existingIndex].name : poolId;
