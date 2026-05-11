@@ -269,6 +269,15 @@ function App() {
     return () => subscription.unsubscribe();
   }, [userProfile]);
 
+  useEffect(() => {
+    const handleUserUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<UserProfile>;
+      if (customEvent.detail) setUserProfile(customEvent.detail);
+    };
+    window.addEventListener('briefly-user-updated', handleUserUpdate);
+    return () => window.removeEventListener('briefly-user-updated', handleUserUpdate);
+  }, []);
+
   const handleProfileComplete = (profile: UserProfile) => {
     setUserProfile(profile);
     setScreen({ type: 'dashboard' });

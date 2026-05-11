@@ -154,11 +154,16 @@ export interface UserProfile {
     id: string; // The generated user ID or UUID from Supabase
     name: string;
     color: string;
+    avatarIcon?: string;
     createdAt: number;
     // Identity fields:
     identityType?: 'seed' | 'cloud' | 'local';
     seedPhrase?: string; // Solo si es Seed Identity
     syncPoolId?: string; // El room invisible donde se sincronizan los pools
+    // Local-only profile fields (not synced to backend)
+    displayUsername?: string;
+    institution?: string;
+    career?: string;
 }
 
 export interface PoolInfo {

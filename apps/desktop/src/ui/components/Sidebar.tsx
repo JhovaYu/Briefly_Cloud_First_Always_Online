@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import {
     History, FileText, Calendar, CheckSquare, Clock, Archive, Trash2,
     Settings, LogOut, Sun, Moon, Bell, Plus
 } from 'lucide-react';
-import type { UserProfile } from '../../core/domain/UserProfile';
+import { type UserProfile, saveUserProfile } from '../../core/domain/UserProfile';
+import { ProfileDrawer } from './ProfileDrawer';
 
 export interface SidebarProps {
     user: UserProfile;
@@ -13,6 +15,7 @@ export interface SidebarProps {
     onToggleTheme: () => void;
     onOpenSettings?: () => void;
     onOpenNotifications?: () => void;
+    onOpenProfile?: () => void;
     onNewNote?: () => void;
 }
 
@@ -25,8 +28,17 @@ export function Sidebar({
     onToggleTheme,
     onOpenSettings,
     onOpenNotifications,
+    onOpenProfile,
     onNewNote
 }: SidebarProps) {
+    const [isProfileOpen, setProfileOpen] = useState(false);
+
+    const handleSaveProfile = (updates: Partial<UserProfile>) => {
+        const newProfile = { ...user, ...updates };
+        saveUserProfile(newProfile);
+        window.dispatchEvent(new CustomEvent('briefly-user-updated', { detail: newProfile }));
+    };
+
     return (
         <aside className="db2-sidebar">
             <div className="db2-brand">
@@ -56,17 +68,17 @@ export function Sidebar({
             </nav>
 
             <div className="db2-bottom-nav">
-                <div className="db2-user-profile">
+                <div className="db2-user-profile" onClick={() => { onOpenProfile?.(); setProfileOpen(true); }} style={{ cursor: 'pointer' }}>
                     <div className="db2-user-avatar2" style={{ background: user.color }}>
                         {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="db2-user-name2" title={user.name}>
                         {user.name}
                     </div>
-                    <button className="db2-user-icon-btn" onClick={onToggleTheme} title="Cambiar tema">
+                    <button className="db2-user-icon-btn" onClick={(e) => { e.stopPropagation(); onToggleTheme(); }} title="Cambiar tema">
                         {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
                     </button>
-                    <button className="db2-user-icon-btn" onClick={onOpenNotifications} title="Notificaciones">
+                    <button className="db2-user-icon-btn" onClick={(e) => { e.stopPropagation(); onOpenNotifications && onOpenNotifications(); }} title="Notificaciones">
                         <Bell size={18} />
                     </button>
                 </div>
@@ -75,6 +87,14 @@ export function Sidebar({
                 <button className="db2-nav-item" onClick={onOpenSettings}><Settings size={16} /> Ajustes</button>
                 <button className="db2-nav-item" onClick={onLogout}><LogOut size={16} /> Cerrar sesión</button>
             </div>
+            <ProfileDrawer 
+                isOpen={isProfileOpen} 
+                onClose={() => setProfileOpen(false)} 
+                user={user} 
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onSave={handleSaveProfile} 
+            />
         </aside>
     );
 }
