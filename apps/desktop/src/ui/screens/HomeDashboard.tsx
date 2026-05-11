@@ -165,8 +165,9 @@ export function HomeDashboard({ user, yjsDoc, onOpenPool, onLogout, onOpenCalend
     localStorage.setItem('fluent-theme', theme);
   }, [theme]);
 
-  // Sincronización de Tareas P2P
+  // Sincronización de Tareas P2P — skip in cloud mode, tasks live in planning-service
   useEffect(() => {
+    if (cloudProviderEnabled) return;
     const svc = new TaskService(yjsDoc);
     const tasksMap = yjsDoc.getMap<Task>('tasks');
 

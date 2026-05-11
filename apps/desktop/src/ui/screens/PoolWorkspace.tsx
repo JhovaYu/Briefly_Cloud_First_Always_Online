@@ -143,6 +143,11 @@ export function PoolWorkspace({ poolId, poolName, user, onBack, signalingUrl, wo
 
     // Only block and wait when there is a cloud candidate but getAccessToken is missing.
     // Local pools (isCloudCandidate=false) always proceed to AppServices.getOrCreate.
+    // Guard: skip P2P init when poolId is empty in cloud-first mode — avoids ws://localhost:4444 fallback
+    if (!poolId && import.meta.env.VITE_COLLAB_USE_CLOUD_PROVIDER === 'true') {
+      console.info('[PoolWorkspace] Skipping P2P init: empty poolId in cloud-first mode');
+      return;
+    }
     if (isCloudCandidate && !getAccessToken) {
       console.info('[PoolWorkspace] cloud bootstrap waiting:', {
         hasWorkspaceId: Boolean(cloudWorkspaceId),
