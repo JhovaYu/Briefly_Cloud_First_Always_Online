@@ -413,3 +413,77 @@ COPY apps/desktop/dist/ /usr/share/nginx/html/
 ```
 
 **Verification**: `docker compose -f docker-compose.ec2.yml build nginx` ✅ succeeds and copies both files correctly.
+
+---
+
+## CI/CD (CI-01)
+
+### Workflows
+
+#### `desktop-ci.yml` — Automatic build check
+Runs on every push to `pm-06-mobile-rn` and `main`, and on PRs to `main`.
+
+- Installs dependencies with `npm ci`
+- Builds `apps/desktop` with `npm run build --workspace apps/desktop`
+- Verifies `apps/desktop/dist/` exists
+- No secrets, no deploy, read-only
+
+#### `deploy-ec2.yml` — Manual production deploy
+Triggered manually via GitHub Actions UI with `workflow_dispatch`.
+
+**Requires GitHub Secrets:**
+- `EC2_HOST` — public IP or hostname of EC2 (e.g., `13.221.217.108`)
+- `EC2_USER` — SSH username (e.g., `ec2-user`)
+- `SSH_PRIVATE_KEY` — private key for SSH authentication
+
+**Deploy steps (on EC2):**
+1. Pulls latest `pm-06-mobile-rn`
+2. Runs `npm ci`
+3. Builds desktop app with `NODE_OPTIONS="--max-old-space-size=2048" npm run build --workspace apps/desktop`
+4. Rebuilds nginx Docker image
+5. Restarts nginx container
+6. Runs health check against `https://briefly.ddns.net`
+
+### APK Distribution
+
+The Android APK is **NOT** committed to the repo. It is distributed as a GitHub Release asset:
+```
+https://github.com/JhovaYu/Briefly_Cloud_First_Always_Online/releases/latest/download/briefly-demo-android.apk
+```
+
+The landing page links directly to this URL. No APK file exists in `apps/desktop/public/downloads/`.
+
+### Security Rules
+
+**NEVER do on EC2:**
+- `cat .env.s3` or any env file
+- `docker inspect` any container
+- `docker compose config`
+- `printenv` or `env` to print secrets
+- `git add .` or commit APK files
+
+**NEVER configure in GitHub Secrets:**
+- Any Supabase keys
+- Any `.env` content from EC2
+
+The deploy workflow only needs EC2 SSH access — it pulls source code and runs the existing build/deploy scripts.
+
+### AWS Learner Lab Protection
+
+The manual confirmation step (`workflow_dispatch` with `confirm: DEPLOY`) prevents accidental production deploys. Every deploy requires human confirmation in the GitHub Actions UI.
+
+### Secrets Setup (GitHub)
+
+1. Go to **Settings → Secrets and variables → Actions**
+2. Add `EC2_HOST` — your EC2 public IP
+3. Add `EC2_USER` — typically `ec2-user`
+4. Add `SSH_PRIVATE_KEY` — paste the full private key content (including `-----BEGIN OPENSSH PRIVATE KEY-----`)
+
+### Running the Deploy
+
+1. Go to **Actions** tab in GitHub
+2. Select **"Deploy Desktop to EC2 (Manual)"**
+3. Click **Run workflow**
+4. Enter `DEPLOY` in the confirm field
+5. Click **Run workflow**
+6. Monitor the runner log for build progress and health check result
