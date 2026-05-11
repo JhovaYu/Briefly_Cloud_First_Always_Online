@@ -50,12 +50,14 @@ jobs:
             git checkout pm-06-mobile-rn
             git pull --ff-only origin pm-06-mobile-rn
 
-            # Install dependencies and build
+            # Install dependencies and build with cloud-first flag
             npm ci
-            NODE_OPTIONS="--max-old-space-size=2048" npm run build --workspace apps/desktop
+            export VITE_COLLAB_USE_CLOUD_PROVIDER=true
+            export NODE_OPTIONS="--max-old-space-size=2048"
+            npm run build --workspace apps/desktop
 
             # Rebuild and restart nginx container
-            docker compose -f docker-compose.ec2.yml build nginx
+            docker compose -f docker-compose.ec2.yml build --no-cache nginx
             docker compose -f docker-compose.ec2.yml up -d nginx
 
             # Verify nginx is running
